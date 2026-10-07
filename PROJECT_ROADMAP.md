@@ -51,5 +51,5 @@
 | :--- | :--- | :--- | :--- |
 | Oct 2026 | Code Ingestion & Architecture Audit | Done | Unpacked `Sam's project.zip`, audited React 19 + Capacitor 8 stack, identified root cause of profile saving bug. |
 | Oct 2026 | Step 1: Profile Save Fix & Verification | Done | Profile saving upgraded to atomic `setDoc`, bound to user UID, build verified with 0 errors. |
-| Oct 2026 | Step 2: Git Repository & Collaboration Workflow | In Progress | Git initialized locally with `main` and `develop` branches; `.gitignore` secured. Awaiting remote GitHub URL to push. |
-| Oct 2026 | Step 3: iOS Target & TestFlight Cloud Pipeline | Pending | Ready after GitHub push. |
+| Oct 2026 | Step 2: Git Repository & Collaboration Workflow | Done | Private GitHub repository live (`samuelmorrison99/Uni-Tonight`), branches `main` & `develop` synced, collaboration guide established. |
+| Oct 2026 | Step 3: iOS Target & TestFlight Cloud Pipeline | In Progress | Ready to add `@capacitor/ios`, Firebase iOS config, and cloud build pipeline. |
