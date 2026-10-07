@@ -1,0 +1,104 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap');
+
+:root {
+  --bg-dark: #09090b;
+  --bg-sidebar: #121215;
+  --bg-card: #18181c;
+  --bg-card-hover: #222227;
+  
+  --text-primary: #f4f4f5;
+  --text-secondary: #a1a1aa;
+  --text-muted: #71717a;
+  
+  --primary: #a855f7; /* Vibrant violet/purple */
+  --primary-hover: #9333ea;
+  --primary-glow: rgba(168, 85, 247, 0.15);
+  
+  --border: #27272a;
+  --border-focus: #3f3f46;
+
+  /* Category colors */
+  --color-dancing: #c084fc;
+  --bg-dancing: rgba(192, 132, 252, 0.1);
+  --color-party: #f472b6;
+  --bg-party: rgba(244, 114, 182, 0.1);
+  --color-drinks: #34d399;
+  --bg-drinks: rgba(52, 211, 153, 0.1);
+  --color-bar: #fbbf24;
+  --bg-bar: rgba(251, 191, 36, 0.1);
+  --color-club: #60a5fa;
+  --bg-club: rgba(96, 165, 250, 0.1);
+
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-dark);
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-dark);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-focus);
+}
+
+/* Base typography */
+h1, h2, h3, h4, .font-outfit {
+  font-family: 'Outfit', sans-serif;
+}
+
+/* Animation utilities */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse-subtle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* Grid & Layout */
+.app-container {
+  display: flex;
+  min-height: 100vh;
+}
+
+.main-content {
+  flex: 1;
+  padding: 2.5rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+  animation: fadeIn 0.4s ease-out;
+}
+
+@media (max-width: 768px) {
+  .app-container {
+    flex-direction: column;
+  }
+  .main-content {
+    padding: 1.5rem;
+    padding-bottom: 5rem; /* Space for mobile nav bar */
+  }
+}

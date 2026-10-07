@@ -1,0 +1,32 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper: check if user is signed in
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper: check if user owns the document
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    // Profiles rules: Users can read all profiles, but write only their own
+    match /profiles/{userId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && isOwner(userId);
+      allow delete: if false;
+    }
+
+    // Crews rules: Authenticated users can view crews. Hosts can manage, others can only toggle RSVP arrays
+    match /crews/{crewId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.hostId == request.auth.uid;
+      allow update: if isAuthenticated() && (
+        resource.data.hostId == request.auth.uid || 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['attendeeIds', 'requestIds'])
+      );
+      allow delete: if isAuthenticated() && resource.data.hostId == request.auth.uid;
+    }
+  }
+}
