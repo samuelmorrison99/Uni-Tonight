@@ -50,6 +50,6 @@
 | Date | Milestone | Status | Notes |
 | :--- | :--- | :--- | :--- |
 | Oct 2026 | Code Ingestion & Architecture Audit | Done | Unpacked `Sam's project.zip`, audited React 19 + Capacitor 8 stack, identified root cause of profile saving bug. |
-| Oct 2026 | Step 1: Profile Save Fix & Verification | Pending | In progress. |
-| Oct 2026 | Step 2: Git Repository & Collaboration Workflow | Pending | Awaiting GitHub setup. |
-| Oct 2026 | Step 3: iOS Target & TestFlight Cloud Pipeline | Pending | Ready after Step 2. |
+| Oct 2026 | Step 1: Profile Save Fix & Verification | Done | Profile saving upgraded to atomic `setDoc`, bound to user UID, build verified with 0 errors. |
+| Oct 2026 | Step 2: Git Repository & Collaboration Workflow | In Progress | Git initialized locally with `main` and `develop` branches; `.gitignore` secured. Awaiting remote GitHub URL to push. |
+| Oct 2026 | Step 3: iOS Target & TestFlight Cloud Pipeline | Pending | Ready after GitHub push. |
