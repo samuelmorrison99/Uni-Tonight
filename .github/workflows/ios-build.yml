@@ -1,21 +1,18 @@
-name: Build iOS (Apple)
+name: Build & Deploy iOS (Apple TestFlight)
 
 on:
   workflow_dispatch:
     inputs:
-      build_type:
-        description: 'Build Type'
+      upload_to_testflight:
+        description: 'Upload directly to Apple TestFlight'
         required: true
-        default: 'release'
-        type: choice
-        options:
-          - release
-          - debug
+        type: boolean
+        default: true
 
 jobs:
-  build-ios:
-    name: Compile iOS App
-    runs-on: macos-latest
+  build-and-upload:
+    name: Build iOS & Deploy
+    runs-on: macos-14
 
     steps:
       - name: Checkout Repository
@@ -27,30 +24,98 @@ jobs:
           node-version: 20
           cache: 'npm'
 
-      - name: Install Node Dependencies
+      - name: Install Dependencies
         run: npm install
 
-      - name: Build Web Application Bundle
+      - name: Build Web Bundle
         run: npm run build
 
-      - name: Sync Capacitor iOS Project
+      - name: Sync Capacitor iOS
         run: npx cap sync ios
 
+      - name: Configure App Store Connect API Key
+        if: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY != '' }}
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          mkdir -p ~/.private_keys
+          echo "${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}" > ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_KEY_ID }}.p8
+          echo "${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}" > ~/.private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_KEY_ID }}.p8
+          chmod 600 ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_KEY_ID }}.p8
+          chmod 600 ~/.private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_KEY_ID }}.p8
+
       - name: Select Xcode Version
-        run: sudo xcode-select -switch /Applications/Xcode.app
+        run: sudo xcode-select -switch /Applications/Xcode_15.4.app || sudo xcode-select -switch /Applications/Xcode.app
 
       - name: Build Xcode Archive
         run: |
-          xcodebuild -project ios/App/App.xcodeproj \
-            -scheme App \
-            -configuration Release \
-            -destination "generic/platform=iOS" \
-            -archivePath build/App.xcarchive \
-            CODE_SIGNING_ALLOWED=NO \
-            archive
+          if [ -n "${{ secrets.APP_STORE_CONNECT_KEY_ID }}" ]; then
+            xcodebuild -project ios/App/App.xcodeproj \
+              -scheme App \
+              -configuration Release \
+              -destination "generic/platform=iOS" \
+              -archivePath build/App.xcarchive \
+              -allowProvisioningUpdates \
+              -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_KEY_ID }}.p8 \
+              -authenticationKeyID ${{ secrets.APP_STORE_CONNECT_KEY_ID }} \
+              -authenticationKeyIssuerID ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }} \
+              archive
+          else
+            xcodebuild -project ios/App/App.xcodeproj \
+              -scheme App \
+              -configuration Release \
+              -destination "generic/platform=iOS" \
+              -archivePath build/App.xcarchive \
+              CODE_SIGNING_ALLOWED=NO \
+              archive
+          fi
 
-      - name: Upload iOS Archive Artifact
+      - name: Export IPA
+        if: ${{ secrets.APP_STORE_CONNECT_KEY_ID != '' }}
+        run: |
+          cat << 'EOF' > ios/App/exportOptions.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>app-store</string>
+              <key>signingStyle</key>
+              <string>automatic</string>
+              <key>stripSwiftSymbols</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+
+          xcodebuild -exportArchive \
+            -archivePath build/App.xcarchive \
+            -exportPath build/ipa \
+            -exportOptionsPlist ios/App/exportOptions.plist \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_KEY_ID }}.p8 \
+            -authenticationKeyID ${{ secrets.APP_STORE_CONNECT_KEY_ID }} \
+            -authenticationKeyIssuerID ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+
+      - name: Upload to Apple TestFlight
+        if: ${{ inputs.upload_to_testflight && secrets.APP_STORE_CONNECT_KEY_ID != '' }}
+        run: |
+          IPA_FILE=$(find build/ipa -name "*.ipa" | head -n 1)
+          if [ -f "$IPA_FILE" ]; then
+            echo "Uploading $IPA_FILE to TestFlight..."
+            xcrun altool --upload-app \
+              --type ios \
+              --file "$IPA_FILE" \
+              --apiKey "${{ secrets.APP_STORE_CONNECT_KEY_ID }}" \
+              --apiIssuer "${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}"
+            echo "Successfully submitted to TestFlight!"
+          else
+            echo "No IPA found to upload."
+          fi
+
+      - name: Upload Archive Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: UniTonight-iOS-Archive
-          path: build/App.xcarchive
+          name: UniTonight-iOS-Build
+          path: |
+            build/App.xcarchive
+            build/ipa/*.ipa
