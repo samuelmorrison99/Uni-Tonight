@@ -12,7 +12,7 @@ on:
 jobs:
   build-and-upload:
     name: Build iOS & Deploy
-    runs-on: macos-14
+    runs-on: macos-latest
 
     steps:
       - name: Checkout Repository
@@ -34,43 +34,40 @@ jobs:
         run: npx cap sync ios
 
       - name: Configure App Store Connect API Key
-        if: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY != '' }}
+        env:
+          PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
         run: |
           mkdir -p ~/.appstoreconnect/private_keys
           mkdir -p ~/.private_keys
-          echo "${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}" > ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_KEY_ID }}.p8
-          echo "${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}" > ~/.private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_KEY_ID }}.p8
-          chmod 600 ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_KEY_ID }}.p8
-          chmod 600 ~/.private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_KEY_ID }}.p8
+          echo "$PRIVATE_KEY" > ~/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8
+          echo "$PRIVATE_KEY" > ~/.private_keys/AuthKey_${KEY_ID}.p8
+          chmod 600 ~/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8
+          chmod 600 ~/.private_keys/AuthKey_${KEY_ID}.p8
 
       - name: Select Xcode Version
         run: sudo xcode-select -switch /Applications/Xcode_15.4.app || sudo xcode-select -switch /Applications/Xcode.app
 
       - name: Build Xcode Archive
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
         run: |
-          if [ -n "${{ secrets.APP_STORE_CONNECT_KEY_ID }}" ]; then
-            xcodebuild -project ios/App/App.xcodeproj \
-              -scheme App \
-              -configuration Release \
-              -destination "generic/platform=iOS" \
-              -archivePath build/App.xcarchive \
-              -allowProvisioningUpdates \
-              -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_KEY_ID }}.p8 \
-              -authenticationKeyID ${{ secrets.APP_STORE_CONNECT_KEY_ID }} \
-              -authenticationKeyIssuerID ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }} \
-              archive
-          else
-            xcodebuild -project ios/App/App.xcodeproj \
-              -scheme App \
-              -configuration Release \
-              -destination "generic/platform=iOS" \
-              -archivePath build/App.xcarchive \
-              CODE_SIGNING_ALLOWED=NO \
-              archive
-          fi
+          xcodebuild -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath build/App.xcarchive \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8 \
+            -authenticationKeyID "$KEY_ID" \
+            -authenticationKeyIssuerID "$ISSUER_ID" \
+            archive
 
       - name: Export IPA
-        if: ${{ secrets.APP_STORE_CONNECT_KEY_ID != '' }}
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
         run: |
           cat << 'EOF' > ios/App/exportOptions.plist
           <?xml version="1.0" encoding="UTF-8"?>
@@ -92,12 +89,15 @@ jobs:
             -exportPath build/ipa \
             -exportOptionsPlist ios/App/exportOptions.plist \
             -allowProvisioningUpdates \
-            -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_KEY_ID }}.p8 \
-            -authenticationKeyID ${{ secrets.APP_STORE_CONNECT_KEY_ID }} \
-            -authenticationKeyIssuerID ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+            -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8 \
+            -authenticationKeyID "$KEY_ID" \
+            -authenticationKeyIssuerID "$ISSUER_ID"
 
       - name: Upload to Apple TestFlight
-        if: ${{ inputs.upload_to_testflight && secrets.APP_STORE_CONNECT_KEY_ID != '' }}
+        if: ${{ inputs.upload_to_testflight }}
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
         run: |
           IPA_FILE=$(find build/ipa -name "*.ipa" | head -n 1)
           if [ -f "$IPA_FILE" ]; then
@@ -105,11 +105,12 @@ jobs:
             xcrun altool --upload-app \
               --type ios \
               --file "$IPA_FILE" \
-              --apiKey "${{ secrets.APP_STORE_CONNECT_KEY_ID }}" \
-              --apiIssuer "${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}"
+              --apiKey "$KEY_ID" \
+              --apiIssuer "$ISSUER_ID"
             echo "Successfully submitted to TestFlight!"
           else
-            echo "No IPA found to upload."
+            echo "Error: No IPA found to upload."
+            exit 1
           fi
 
       - name: Upload Archive Artifact
