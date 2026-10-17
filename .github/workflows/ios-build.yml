@@ -53,6 +53,7 @@ jobs:
             -configuration Release \
             -destination "generic/platform=iOS" \
             -archivePath build/App.xcarchive \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
@@ -67,6 +68,12 @@ jobs:
           security default-keychain -s build.keychain || true
           security unlock-keychain -p "actions" build.keychain || true
           security set-keychain-settings -lut 21600 build.keychain || true
+
+          # Copy privacy manifest into app bundle and remove static frameworks
+          # (GoogleMobileAds and UserMessagingPlatform are static libraries already linked into the App executable)
+          cp ios/App/App/PrivacyInfo.xcprivacy build/App.xcarchive/Products/Applications/App.app/PrivacyInfo.xcprivacy
+          rm -rf build/App.xcarchive/Products/Applications/App.app/Frameworks/GoogleMobileAds.framework
+          rm -rf build/App.xcarchive/Products/Applications/App.app/Frameworks/UserMessagingPlatform.framework
 
           cat << 'EOF' > ios/App/exportOptions.plist
           <?xml version="1.0" encoding="UTF-8"?>
