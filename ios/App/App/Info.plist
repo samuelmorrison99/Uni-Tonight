@@ -49,6 +49,10 @@
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Uni Tonight uses your location to show student events and crews happening near your campus.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Uni Tonight uses your location to show student events, nightlife venues, and crews happening near your campus.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>Uni Tonight uses your location to show student events, nightlife venues, and crews happening near your campus.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Uni Tonight needs access to your photos so you can upload profile pictures.</string>
 	<key>NSCameraUsageDescription</key>
