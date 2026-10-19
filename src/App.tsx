@@ -12,6 +12,8 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { getToken } from 'firebase/messaging';
 import type { User as FirebaseUser } from 'firebase/auth';
 import { AuthGate } from './components/AuthGate';
+import { LandingWebsite } from './components/LandingWebsite';
+import { Capacitor } from '@capacitor/core';
 import type { CrewPlan, UserProfile, Venue } from './types';
 import { getCurrentCoordinates } from './utils/geolocation';
 import { initializeAdMob, showBannerAd } from './utils/admob';
@@ -27,6 +29,19 @@ export const CITY_NEIGHBORHOODS: Record<string, string[]> = {
 };
 
 function App() {
+  const isNativeApp = Capacitor.isNativePlatform();
+  const [showWebsite, setShowWebsite] = useState<boolean>(() => {
+    if (isNativeApp) return false;
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash;
+      const params = new URLSearchParams(window.location.search);
+      if (hash === '#app' || params.get('app') === '1') {
+        return false;
+      }
+    }
+    return true;
+  });
+
   const [activePage, setActivePage] = useState<string>('feed');
   const [isGoingOut, setIsGoingOut] = useState<boolean>(true);
   const [currentCity, setCurrentCity] = useState<string>('Liverpool');
@@ -34,6 +49,36 @@ function App() {
   // Lifted States for sharing user location & search radius (default 3 miles, i.e., 4828 meters)
   const [userCoords, setUserCoords] = useState<[number, number] | null>(null);
   const [searchRadius, setSearchRadius] = useState<number>(4828);
+
+  useEffect(() => {
+    if (isNativeApp) return;
+    const handleHashChange = () => {
+      if (window.location.hash === '#app') {
+        setShowWebsite(false);
+      }
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [isNativeApp]);
+
+  const handleLaunchWebApp = (initialTab?: string) => {
+    if (initialTab) {
+      setActivePage(initialTab);
+    }
+    setShowWebsite(false);
+    if (typeof window !== 'undefined') {
+      window.location.hash = 'app';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const handleReturnToWebsite = () => {
+    setShowWebsite(true);
+    if (typeof window !== 'undefined') {
+      history.pushState('', document.title, window.location.pathname + window.location.search);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
 
   useEffect(() => {
     getCurrentCoordinates()
@@ -527,6 +572,17 @@ function App() {
     }
   };
 
+  if (!isNativeApp && showWebsite) {
+    return (
+      <LandingWebsite
+        onLaunchApp={handleLaunchWebApp}
+        isLoggedIn={!!currentUser}
+        userName={activeProfile?.name}
+        livePlans={plans}
+      />
+    );
+  }
+
   if (authLoading) {
     return (
       <div style={{ 
@@ -555,7 +611,12 @@ function App() {
   }
 
   if (!currentUser) {
-    return <AuthGate onAuthSuccess={(uid) => setActiveProfileId(uid)} />;
+    return (
+      <AuthGate
+        onAuthSuccess={(uid) => setActiveProfileId(uid)}
+        onBackToWebsite={!isNativeApp ? handleReturnToWebsite : undefined}
+      />
+    );
   }
 
   const pendingRequestsCount = plans
@@ -611,7 +672,8 @@ function App() {
         activePage={activePage} 
         setActivePage={setActivePage} 
         pendingRequestsCount={pendingRequestsCount} 
-        unreadMessagesCount={unreadMessagesCount} 
+        unreadMessagesCount={unreadMessagesCount}
+        onBackToWebsite={!isNativeApp ? handleReturnToWebsite : undefined}
       />
       <main className="main-content">
         {renderPage()}

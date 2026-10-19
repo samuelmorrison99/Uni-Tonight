@@ -6,13 +6,14 @@ import {
 } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { auth, db, googleProvider } from '../firebase';
-import { LogIn, Mail, Lock, UserPlus, AlertCircle, Compass } from 'lucide-react';
+import { LogIn, Mail, Lock, UserPlus, AlertCircle, Compass, ArrowLeft } from 'lucide-react';
 
 interface AuthGateProps {
   onAuthSuccess: (uid: string) => void;
+  onBackToWebsite?: () => void;
 }
 
-export const AuthGate: React.FC<AuthGateProps> = ({ onAuthSuccess }) => {
+export const AuthGate: React.FC<AuthGateProps> = ({ onAuthSuccess, onBackToWebsite }) => {
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -122,6 +123,29 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthSuccess }) => {
       </div>
 
       <div className="auth-card-container">
+        {onBackToWebsite && (
+          <button
+            type="button"
+            onClick={onBackToWebsite}
+            style={{
+              alignSelf: 'flex-start',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              background: 'none',
+              border: 'none',
+              color: 'var(--text-secondary)',
+              fontSize: '0.82rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              marginBottom: '1rem',
+              padding: 0
+            }}
+          >
+            <ArrowLeft size={15} />
+            <span>Back to unitonight.com</span>
+          </button>
+        )}
         <header className="auth-header">
           <div className="logo-badge">
             <Compass size={28} className="logo-icon" />

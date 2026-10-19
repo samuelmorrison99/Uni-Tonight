@@ -1,5 +1,5 @@
 import React from 'react';
-import { Flame, Compass, PlusCircle, Map, Moon, User, LogOut } from 'lucide-react';
+import { Flame, Compass, PlusCircle, Map, Moon, User, LogOut, Globe } from 'lucide-react';
 import { auth } from '../firebase';
 
 interface SidebarProps {
@@ -7,9 +7,16 @@ interface SidebarProps {
   setActivePage: (page: string) => void;
   pendingRequestsCount?: number;
   unreadMessagesCount?: number;
+  onBackToWebsite?: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, pendingRequestsCount = 0, unreadMessagesCount = 0 }) => {
+export const Sidebar: React.FC<SidebarProps> = ({
+  activePage,
+  setActivePage,
+  pendingRequestsCount = 0,
+  unreadMessagesCount = 0,
+  onBackToWebsite
+}) => {
   const menuItems = [
     { id: 'feed', label: 'Feed', icon: Flame, badge: pendingRequestsCount },
     { id: 'explore', label: 'Explore', icon: Compass },
@@ -48,6 +55,23 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, pen
           })}
         </nav>
 
+        {onBackToWebsite && (
+          <button
+            type="button"
+            onClick={onBackToWebsite}
+            className="nav-item"
+            style={{
+              marginBottom: '0.5rem',
+              color: 'var(--text-secondary)',
+              border: '1px solid var(--border)',
+              backgroundColor: 'rgba(255, 255, 255, 0.02)'
+            }}
+          >
+            <Globe size={18} className="nav-icon" />
+            <span>Website Home</span>
+          </button>
+        )}
+
         {/* Sign Out Button at the bottom of desktop sidebar */}
         <button
           type="button"
@@ -58,7 +82,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, pen
           }}
           className="nav-item"
           style={{ 
-            marginTop: 'auto', 
+            marginTop: onBackToWebsite ? '0' : 'auto', 
             color: '#f87171', 
             border: '1px solid rgba(239, 68, 68, 0.2)',
             backgroundColor: 'rgba(239, 68, 68, 0.02)'
