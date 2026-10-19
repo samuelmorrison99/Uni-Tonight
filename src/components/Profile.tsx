@@ -107,11 +107,12 @@ export const Profile: React.FC<ProfileProps> = ({
 
     try {
       const base64String = await compressImage(file);
-      if (photos.length < 3) {
-        setPhotos(prev => [...prev, base64String]);
-      }
+      setPhotos(prev => (prev.length < 3 ? [...prev, base64String] : prev));
     } catch (err) {
       console.error("Failed to compress image:", err);
+      alert("Could not process that image. Please try another photo.");
+    } finally {
+      e.target.value = '';
     }
   };
 
@@ -127,6 +128,7 @@ export const Profile: React.FC<ProfileProps> = ({
     }
     const currentUid = auth.currentUser.uid;
     setIsSaving(true);
+    setSaveSuccess(false);
     try {
       const docRef = doc(db, "profiles", currentUid);
       await setDoc(docRef, {
@@ -138,7 +140,7 @@ export const Profile: React.FC<ProfileProps> = ({
         updatedAt: Date.now()
       }, { merge: true });
       setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
+      setTimeout(() => setSaveSuccess(false), 3500);
     } catch (err: any) {
       console.error("Failed to update profile in Firestore:", err);
       alert(`Failed to save profile: ${err.message || 'Permission denied'}`);
@@ -261,9 +263,14 @@ export const Profile: React.FC<ProfileProps> = ({
                 </div>
 
                 <div className="action-row" style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', width: '100%' }}>
-                  <button type="submit" disabled={isSaving} className="save-profile-btn">
+                  <button
+                    type="submit"
+                    disabled={isSaving}
+                    className="save-profile-btn"
+                    style={saveSuccess ? { backgroundColor: '#10b981', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)' } : undefined}
+                  >
                     <Save size={16} />
-                    <span>{isSaving ? 'Saving...' : 'Save Profile'}</span>
+                    <span>{isSaving ? 'Saving...' : saveSuccess ? 'Profile Saved! ✓' : 'Save Profile'}</span>
                   </button>
 
                   <button 
@@ -303,8 +310,8 @@ export const Profile: React.FC<ProfileProps> = ({
             </div>
           </div>
         </div>
-        <div style={{ textAlign: 'center', opacity: 0.25, fontSize: '0.75rem', padding: '1.5rem 0', clear: 'both' }}>
-          App Version: 1.5 (Dropdown Fix)
+        <div style={{ textAlign: 'center', opacity: 0.25, fontSize: '0.75rem', padding: '1.5rem 0 4.5rem 0', clear: 'both' }}>
+          App Version: 1.6 (Profile Sync Fix)
         </div>
       </div>
 

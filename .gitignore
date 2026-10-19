@@ -10,6 +10,7 @@ android/.gradle
 android/build
 android/app/release/*.aab
 android/app/release/*.apk
+android/local.properties
 .vercel
 
 # Signing Keys & Certificates (Keep secure)
