@@ -21,13 +21,14 @@ interface ChatMessage {
 
 export const MyNight: React.FC<MyNightProps> = ({ plans, toggleRSVP, profiles, activeProfile }) => {
   const [activeTab, setActiveTab] = useState<'crews' | 'dms'>('crews');
+  const [blockedUserIds, setBlockedUserIds] = useState<string[]>([]);
   
   // Expiration check: hide joined crews if their scheduled time is older than 6 hours
   const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
   const joinedPlans = plans.filter(p => 
     p.joined && (!p.eventTimestamp || (Date.now() - p.eventTimestamp < SIX_HOURS_MS))
   );
-  const otherUsers = profiles.filter(u => u.id !== activeProfile.id);
+  const otherUsers = profiles.filter(u => u.id !== activeProfile.id && !blockedUserIds.includes(u.id));
 
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(
     joinedPlans.length > 0 ? joinedPlans[0].id : null
@@ -297,7 +298,11 @@ export const MyNight: React.FC<MyNightProps> = ({ plans, toggleRSVP, profiles, a
                     Report
                   </button>
                   <button 
-                    onClick={() => alert(`Blocked ${selectedUser.name}. You will no longer receive messages from this user.`)}
+                    onClick={() => {
+                      setBlockedUserIds(prev => [...prev, selectedUser.id]);
+                      setSelectedUserId(null);
+                      alert(`Blocked ${selectedUser.name}. You will no longer receive messages from this user.`);
+                    }}
                     className="leave-btn"
                   >
                     Block

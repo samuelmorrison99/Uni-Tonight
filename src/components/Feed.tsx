@@ -29,6 +29,8 @@ export const Feed: React.FC<FeedProps> = ({
 }) => {
   const [selectedArea, setSelectedArea] = useState<string>('All areas');
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [reportedPlanIds, setReportedPlanIds] = useState<string[]>([]);
+  const [blockedHostIds, setBlockedHostIds] = useState<string[]>([]);
 
   // Real-time clock update
   React.useEffect(() => {
@@ -41,6 +43,8 @@ export const Feed: React.FC<FeedProps> = ({
 
   // Filter plans based on the current city and selected neighborhood
   const filteredPlans = plans.filter(p => {
+    if (reportedPlanIds.includes(p.id)) return false;
+    if (p.hostId && blockedHostIds.includes(p.hostId)) return false;
     // 1. Expiration check (hide if crew is scheduled and is older than 6 hours)
     const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
     if (p.eventTimestamp && (Date.now() - p.eventTimestamp > SIX_HOURS_MS)) {
@@ -295,6 +299,55 @@ export const Feed: React.FC<FeedProps> = ({
                       </button>
                     )}
                   </div>
+
+                  {(!currentUser || plan.hostId !== currentUser.uid) && (
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.35rem' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (confirm(`Report "${plan.title}" for inappropriate content?`)) {
+                            setReportedPlanIds(prev => [...prev, plan.id]);
+                            alert('Thank you. This crew has been reported to moderators and hidden from your feed.');
+                          }
+                        }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--text-muted)',
+                          fontSize: '0.75rem',
+                          cursor: 'pointer',
+                          padding: 0,
+                          textDecoration: 'underline'
+                        }}
+                      >
+                        Report Content
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (confirm(`Block host (${plan.host})? You will no longer see crews or messages from this user.`)) {
+                            if (plan.hostId) {
+                              setBlockedHostIds(prev => [...prev, plan.hostId!]);
+                            } else {
+                              setReportedPlanIds(prev => [...prev, plan.id]);
+                            }
+                            alert(`${plan.host} has been blocked.`);
+                          }
+                        }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#f87171',
+                          fontSize: '0.75rem',
+                          cursor: 'pointer',
+                          padding: 0,
+                          textDecoration: 'underline'
+                        }}
+                      >
+                        Block User
+                      </button>
+                    </div>
+                  )}
 
                   {/* Host Approvals Control Panel */}
                   {currentUser && plan.hostId === currentUser.uid && plan.requestIds && plan.requestIds.length > 0 && (

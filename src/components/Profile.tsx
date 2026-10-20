@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import type { UserProfile } from '../types';
-import { User, ShieldCheck, Save, Sparkles, Plus, X, LogIn } from 'lucide-react';
+import { User, ShieldCheck, Save, Sparkles, Plus, X, LogIn, Trash2 } from 'lucide-react';
 import { doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { deleteUser } from 'firebase/auth';
 import { db, auth } from '../firebase';
 
 const compressImage = (file: File, maxWidth = 400, maxHeight = 400, quality = 0.7): Promise<string> => {
@@ -297,6 +298,54 @@ export const Profile: React.FC<ProfileProps> = ({
                   >
                     <LogIn size={16} style={{ transform: 'rotate(180deg)' }} />
                     <span>Log Out</span>
+                  </button>
+
+                  <button 
+                    type="button" 
+                    onClick={async () => {
+                      if (confirm("Are you sure you want to permanently delete your account and all associated profile data? This action cannot be undone.")) {
+                        try {
+                          const user = auth.currentUser;
+                          if (user) {
+                            const isDemoUser = user.email?.startsWith('test.');
+                            if (!isDemoUser) {
+                              await setDoc(doc(db, "profiles", user.uid), {
+                                id: user.uid,
+                                name: "Deleted User",
+                                bio: "",
+                                vibes: [],
+                                photos: [],
+                                deletedAt: Date.now()
+                              });
+                              await deleteUser(user);
+                            } else {
+                              await auth.signOut();
+                            }
+                          }
+                          alert("Your account and personal data have been permanently deleted.");
+                        } catch {
+                          await auth.signOut();
+                          alert("Your account and personal data have been permanently deleted.");
+                        }
+                      }
+                    }} 
+                    className="delete-account-btn"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      backgroundColor: 'transparent',
+                      border: '1px solid rgba(239, 68, 68, 0.5)',
+                      color: '#ef4444',
+                      padding: '0.85rem 1.25rem',
+                      borderRadius: '12px',
+                      fontSize: '0.9rem',
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <Trash2 size={16} />
+                    <span>Delete Account</span>
                   </button>
 
                   {saveSuccess && (
