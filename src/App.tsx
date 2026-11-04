@@ -155,16 +155,26 @@ function App() {
     }, 5000);
   };
 
-  // Sync Auth State
+  // Sync Auth State (with 2.5s safety timeout for iOS WKWebView)
   useEffect(() => {
+    const safetyTimer = setTimeout(() => {
+      setAuthLoading(false);
+    }, 2500);
     const unsubscribe = onAuthStateChanged(auth, (user) => {
+      clearTimeout(safetyTimer);
       setCurrentUser(user);
       if (user) {
         setActiveProfileId(user.uid);
       }
       setAuthLoading(false);
+    }, () => {
+      clearTimeout(safetyTimer);
+      setAuthLoading(false);
     });
-    return () => unsubscribe();
+    return () => {
+      clearTimeout(safetyTimer);
+      unsubscribe();
+    };
   }, []);
 
   // Request FCM Push Permissions & Save Token
