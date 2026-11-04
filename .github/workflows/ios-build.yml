@@ -69,7 +69,7 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             archive 2>&1 | tee xcodebuild.log || {
-              grep -iE "error:|fatal|requires|minimum|module|sdk" xcodebuild.log | tail -n 15 | while IFS= read -r line; do
+              grep -E "error: " xcodebuild.log | tail -n 8 | while IFS= read -r line; do
                 echo "::error::$line"
               done
               exit 1
