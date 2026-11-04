@@ -12,7 +12,7 @@ on:
 jobs:
   build-and-upload:
     name: Build iOS & Deploy
-    runs-on: macos-15-intel
+    runs-on: macos-latest
 
     steps:
       - name: Checkout Repository
