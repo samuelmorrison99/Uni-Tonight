@@ -17,8 +17,12 @@ concurrency:
 
 jobs:
   build-and-upload:
-    name: Build iOS & Deploy
-    runs-on: macos-14
+    name: Build iOS (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15-intel, macos-26-intel, macos-15, macos-latest]
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout Repository
@@ -126,12 +130,20 @@ jobs:
           IPA_FILE=$(find build/ipa -name "*.ipa" | head -n 1)
           if [ -f "$IPA_FILE" ]; then
             echo "Uploading $IPA_FILE to TestFlight..."
-            xcrun altool --upload-app \
+            set +e
+            UPLOAD_OUT=$(xcrun altool --upload-app \
               --type ios \
               --file "$IPA_FILE" \
               --apiKey "$KEY_ID" \
-              --apiIssuer "$ISSUER_ID"
-            echo "Successfully submitted to TestFlight!"
+              --apiIssuer "$ISSUER_ID" 2>&1)
+            UPLOAD_CODE=$?
+            set -e
+            echo "$UPLOAD_OUT"
+            if [ $UPLOAD_CODE -eq 0 ] || echo "$UPLOAD_OUT" | grep -qiE "Redundant Binary Upload|already uploaded|bundle version must be higher"; then
+              echo "Successfully submitted to TestFlight (or already uploaded by faster matrix runner)!"
+            else
+              exit $UPLOAD_CODE
+            fi
           else
             echo "Error: No IPA found to upload."
             exit 1
@@ -140,7 +152,7 @@ jobs:
       - name: Upload Archive Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: UniTonight-iOS-Build
+          name: UniTonight-iOS-Build-${{ matrix.os }}
           path: |
             build/App.xcarchive
             build/ipa/*.ipa
