@@ -18,7 +18,7 @@ concurrency:
 jobs:
   build-and-upload:
     name: Build iOS & Deploy
-    runs-on: macos-15
+    runs-on: macos-14
 
     steps:
       - name: Checkout Repository
@@ -58,6 +58,7 @@ jobs:
 
       - name: Build Xcode Archive
         run: |
+          set -o pipefail
           xcodebuild -project ios/App/App.xcodeproj \
             -scheme App \
             -configuration Release \
@@ -67,7 +68,12 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            archive
+            archive 2>&1 | tee xcodebuild.log || {
+              grep -iE "error:|fatal|requires|minimum|module|sdk" xcodebuild.log | tail -n 15 | while IFS= read -r line; do
+                echo "::error::$line"
+              done
+              exit 1
+            }
 
       - name: Export IPA
         env:
