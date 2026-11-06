@@ -57,10 +57,6 @@
 	<string>Uni Tonight needs access to your photos so you can upload profile pictures.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Uni Tonight needs access to your camera to take a profile picture.</string>
-	<key>NSUserTrackingUsageDescription</key>
-	<string>This allows Uni Tonight to deliver relevant student offers and venue promotions.</string>
-	<key>GADApplicationIdentifier</key>
-	<string>ca-app-pub-9475673785189932~6003042770</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 </dict>

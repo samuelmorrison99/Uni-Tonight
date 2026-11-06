@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
 import { 
   signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
-  signInWithPopup 
+  createUserWithEmailAndPassword
 } from 'firebase/auth';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { auth, db, googleProvider } from '../firebase';
+import { doc, setDoc } from 'firebase/firestore';
+import { auth, db } from '../firebase';
 import { LogIn, Mail, Lock, UserPlus, AlertCircle, Compass, ArrowLeft } from 'lucide-react';
 
 interface AuthGateProps {
@@ -70,46 +69,6 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthSuccess, onBackToWebsi
         errMsg = 'Please enter a valid email address.';
       }
       setError(errMsg);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleGoogleSignIn = async () => {
-    setError(null);
-    setLoading(true);
-    try {
-      const userCredential = await signInWithPopup(auth, googleProvider);
-      const user = userCredential.user;
-
-      const emailLower = (user.email || '').toLowerCase().trim();
-      const isStudentEmail = emailLower.endsWith('.ac.uk') || emailLower.endsWith('.edu');
-      if (!isStudentEmail) {
-        await auth.signOut();
-        throw new Error('Please use a Google account linked to a student email ending in .ac.uk or .edu');
-      }
-
-      // Check if profile already exists in Firestore
-      const docRef = doc(db, "profiles", user.uid);
-      const docSnap = await getDoc(docRef);
-
-      if (!docSnap.exists()) {
-        // Create new profile document for first-time Google sign up
-        const initialProfile = {
-          id: user.uid,
-          name: user.displayName || 'New Student',
-          bio: 'Signed in with Google. Down to meet new crews!',
-          vibes: [],
-          photos: user.photoURL ? [user.photoURL] : []
-        };
-        await setDoc(docRef, initialProfile);
-      }
-      onAuthSuccess(user.uid);
-    } catch (err: any) {
-      console.error("Google Auth error:", err);
-      if (err.code !== 'auth/popup-closed-by-user') {
-        setError(err.message || 'Google authentication failed.');
-      }
     } finally {
       setLoading(false);
     }
@@ -240,27 +199,6 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthSuccess, onBackToWebsi
             )}
           </button>
         </form>
-
-        <div className="auth-divider">
-          <div className="divider-line"></div>
-          <span>or continue with</span>
-          <div className="divider-line"></div>
-        </div>
-
-        <button 
-          onClick={handleGoogleSignIn} 
-          disabled={loading} 
-          className="auth-google-btn"
-          type="button"
-        >
-          <svg className="google-icon" viewBox="0 0 24 24">
-            <path fill="#EA4335" d="M12 5.04c1.62 0 3.08.56 4.22 1.66l3.15-3.15C17.45 1.84 14.93 1 12 1 7.37 1 3.4 3.66 1.48 7.56l3.85 2.99c.92-2.76 3.51-4.51 6.67-4.51z"/>
-            <path fill="#4285F4" d="M23.49 12.27c0-.81-.07-1.59-.2-2.35H12v4.51h6.46c-.28 1.48-1.12 2.74-2.38 3.58l3.69 2.87c2.16-1.99 3.42-4.92 3.42-8.61z"/>
-            <path fill="#FBBC05" d="M5.33 14.45c-.24-.72-.38-1.5-.38-2.3s.14-1.58.38-2.3L1.48 6.86C.54 8.76 0 10.83 0 13s.54 4.24 1.48 6.14l3.85-2.99-.03-.7z"/>
-            <path fill="#34A853" d="M12 23c3.24 0 5.97-1.07 7.96-2.91l-3.69-2.87c-1.02.68-2.33 1.09-3.96 1.09-3.16 0-5.75-1.75-6.67-4.51L1.48 19.8C3.4 21.66 7.37 23 12 23z"/>
-          </svg>
-          <span>Google</span>
-        </button>
 
         {/* Quick Test Accounts Panel */}
         <div className="demo-accounts-panel" style={{

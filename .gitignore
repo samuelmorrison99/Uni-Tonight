@@ -10,6 +10,8 @@ android/.gradle
 android/build
 android/app/release/*.aab
 android/app/release/*.apk
+*.apk
+*.aab
 android/local.properties
 .vercel
 
