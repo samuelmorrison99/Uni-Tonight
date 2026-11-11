@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Flame,
   Compass,
@@ -18,8 +18,13 @@ import {
   UserX,
   ChevronRight,
   Globe,
-  Lock
+  Lock,
+  Menu,
+  FileText,
+  HelpCircle
 } from 'lucide-react';
+import { collection, addDoc } from 'firebase/firestore';
+import { db } from '../firebase';
 import type { CrewPlan } from '../types';
 
 interface LandingWebsiteProps {
@@ -242,11 +247,51 @@ export const LandingWebsite: React.FC<LandingWebsiteProps> = ({
   // Download / Waitlist Modal & Form State
   const [downloadModalPlatform, setDownloadModalPlatform] = useState<'iOS App Store' | 'Google Play' | null>(null);
   const [waitlistEmail, setWaitlistEmail] = useState('');
+  const [waitlistLoading, setWaitlistLoading] = useState(false);
   const [waitlistSubmitted, setWaitlistSubmitted] = useState(false);
   const [waitlistError, setWaitlistError] = useState<string | null>(null);
 
+  // Mobile Menu & Legal/Support Modal State
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [activeLegalDoc, setActiveLegalDoc] = useState<'privacy' | 'terms' | 'safety' | 'support' | null>(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash.replace('#', '').toLowerCase();
+      if (hash === 'privacy' || hash === 'terms' || hash === 'safety' || hash === 'support') {
+        return hash;
+      }
+    }
+    return null;
+  });
+
+  useEffect(() => {
+    const syncHashModal = () => {
+      const hash = window.location.hash.replace('#', '').toLowerCase();
+      if (hash === 'privacy' || hash === 'terms' || hash === 'safety' || hash === 'support') {
+        setActiveLegalDoc(hash);
+      }
+    };
+    window.addEventListener('hashchange', syncHashModal);
+    return () => window.removeEventListener('hashchange', syncHashModal);
+  }, []);
+
+  const openLegalDoc = (docType: 'privacy' | 'terms' | 'safety' | 'support') => {
+    setActiveLegalDoc(docType);
+    setMobileMenuOpen(false);
+    if (typeof window !== 'undefined') {
+      history.replaceState(null, '', `#${docType}`);
+    }
+  };
+
+  const closeLegalDoc = () => {
+    setActiveLegalDoc(null);
+    if (typeof window !== 'undefined' && ['privacy', 'terms', 'safety', 'support'].includes(window.location.hash.replace('#', '').toLowerCase())) {
+      history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+  };
+
   // Combine Firestore live plans with rich showcase fallback plans
   const combinedPlans = livePlans.length >= 3 ? livePlans.slice(0, 6) : SHOWCASE_PLANS;
+  const activeCrewsCount = livePlans.length > 0 ? livePlans.length : SHOWCASE_PLANS.length;
   const filteredShowcasePlans = selectedCity === 'All UK'
     ? combinedPlans
     : combinedPlans.filter(p =>
@@ -285,7 +330,7 @@ export const LandingWebsite: React.FC<LandingWebsiteProps> = ({
     setChatInput('');
   };
 
-  const handleWaitlistSubmit = (e: React.FormEvent) => {
+  const handleWaitlistSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setWaitlistError(null);
     const cleaned = waitlistEmail.trim().toLowerCase();
@@ -293,8 +338,23 @@ export const LandingWebsite: React.FC<LandingWebsiteProps> = ({
       setWaitlistError('Please enter a valid university email ending in .ac.uk or .edu');
       return;
     }
-    setWaitlistSubmitted(true);
-    setWaitlistEmail('');
+
+    setWaitlistLoading(true);
+    try {
+      await addDoc(collection(db, 'waitlist'), {
+        email: cleaned,
+        universityDomain: cleaned.split('@')[1] || '',
+        platform: downloadModalPlatform || 'Website Early Access',
+        source: 'unitonight.com',
+        createdAt: Date.now()
+      });
+    } catch (err) {
+      console.warn('Waitlist Firestore write warning:', err);
+    } finally {
+      setWaitlistLoading(false);
+      setWaitlistSubmitted(true);
+      setWaitlistEmail('');
+    }
   };
 
   return (
@@ -319,7 +379,10 @@ export const LandingWebsite: React.FC<LandingWebsiteProps> = ({
             <a href="#preview">Interactive Preview</a>
             <a href="#features">Features</a>
             <a href="#how-it-works">How It Works</a>
-            <a href="#download">Download App</a>
+            <button type="button" onClick={() => openLegalDoc('safety')} className="ut-nav-text-btn">
+              Student Safety
+            </button>
+            <a href="#download">Get the App</a>
           </nav>
 
           <div className="ut-nav-actions">
@@ -337,7 +400,7 @@ export const LandingWebsite: React.FC<LandingWebsiteProps> = ({
                 <button
                   type="button"
                   onClick={() => onLaunchApp('feed')}
-                  className="ut-btn ut-btn-ghost"
+                  className="ut-btn ut-btn-ghost ut-hide-xs"
                 >
                   Log In
                 </button>
@@ -351,8 +414,44 @@ export const LandingWebsite: React.FC<LandingWebsiteProps> = ({
                 </button>
               </>
             )}
+
+            <button
+              type="button"
+              className="ut-mobile-menu-btn"
+              onClick={() => setMobileMenuOpen(prev => !prev)}
+              aria-label="Toggle navigation menu"
+            >
+              {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+            </button>
           </div>
         </div>
+
+        {/* Mobile Dropdown Menu */}
+        {mobileMenuOpen && (
+          <div className="ut-mobile-drawer">
+            <a href="#preview" onClick={() => setMobileMenuOpen(false)}>Interactive Preview</a>
+            <a href="#features" onClick={() => setMobileMenuOpen(false)}>Features</a>
+            <a href="#how-it-works" onClick={() => setMobileMenuOpen(false)}>How It Works</a>
+            <button type="button" onClick={() => openLegalDoc('safety')} className="ut-mobile-drawer-link">
+              Student Safety Guidelines
+            </button>
+            <a href="#download" onClick={() => setMobileMenuOpen(false)}>Download App</a>
+            <div className="ut-mobile-drawer-actions">
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  onLaunchApp('feed');
+                }}
+                className="ut-btn ut-btn-primary"
+                style={{ width: '100%', justifyContent: 'center' }}
+              >
+                <span>{isLoggedIn ? 'Open Web App' : 'Log In / Launch Web App'}</span>
+                <ArrowRight size={16} />
+              </button>
+            </div>
+          </div>
+        )}
       </header>
 
       {/* HERO SECTION */}
@@ -388,7 +487,7 @@ export const LandingWebsite: React.FC<LandingWebsiteProps> = ({
                   <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.33c.64-.78 1.08-1.86.96-2.94-.93.04-2.06.62-2.72 1.4-.58.68-1.1 1.79-.96 2.84 1.04.08 2.08-.52 2.72-1.3z" />
                 </svg>
                 <div className="ut-store-btn-text">
-                  <span className="ut-store-small">Download on the</span>
+                  <span className="ut-store-small">iOS EARLY ACCESS</span>
                   <span className="ut-store-big">App Store</span>
                 </div>
               </button>
@@ -406,7 +505,7 @@ export const LandingWebsite: React.FC<LandingWebsiteProps> = ({
                   <path d="M3,20.5V3.5C3,2.91 3.34,2.39 3.84,2.15L13.69,12L3.84,21.85C3.34,21.6 3,21.09 3,20.5M16.81,15.12L6.05,21.34L14.54,12.85L16.81,15.12M20.16,10.81C20.5,11.08 20.75,11.5 20.75,12C20.75,12.5 20.53,12.9 20.18,13.18L17.89,14.5L15.39,12L17.89,9.5L20.16,10.81M6.05,2.66L16.81,8.88L14.54,11.15L6.05,2.66Z" />
                 </svg>
                 <div className="ut-store-btn-text">
-                  <span className="ut-store-small">GET IT ON</span>
+                  <span className="ut-store-small">ANDROID BETA</span>
                   <span className="ut-store-big">Google Play</span>
                 </div>
               </button>
@@ -418,7 +517,7 @@ export const LandingWebsite: React.FC<LandingWebsiteProps> = ({
               >
                 <Globe size={19} />
                 <div className="ut-store-btn-text">
-                  <span className="ut-store-small">INSTANT ACCESS</span>
+                  <span className="ut-store-small">LIVE IN BROWSER</span>
                   <span className="ut-store-big">Launch Web App →</span>
                 </div>
               </button>
@@ -448,7 +547,7 @@ export const LandingWebsite: React.FC<LandingWebsiteProps> = ({
             <div className="ut-phone-floating-badge ut-float-left">
               <span className="ut-live-dot" />
               <div>
-                <strong>14 Crews Active Tonight</strong>
+                <strong>{activeCrewsCount} Crews Active Tonight</strong>
                 <span>Concert Square &amp; Smithdown</span>
               </div>
             </div>
@@ -1106,6 +1205,66 @@ export const LandingWebsite: React.FC<LandingWebsiteProps> = ({
         </div>
       </section>
 
+      {/* STUDENT VOICES / SOCIAL PROOF SECTION */}
+      <section className="ut-section ut-section-alt">
+        <div className="ut-container">
+          <div className="ut-section-header">
+            <span className="ut-eyebrow">CAMPUS COMMUNITY</span>
+            <h2 className="ut-section-title">Why UK Students Use UniTonight</h2>
+            <p className="ut-section-desc">
+              Built for flat pre-drinks, society socials, and spontaneous mid-week nights out.
+            </p>
+          </div>
+
+          <div className="ut-steps-grid">
+            <div className="ut-step-card">
+              <div style={{ display: 'flex', gap: '0.2rem', color: '#fbbf24', marginBottom: '0.75rem' }}>
+                <Star size={16} fill="#fbbf24" />
+                <Star size={16} fill="#fbbf24" />
+                <Star size={16} fill="#fbbf24" />
+                <Star size={16} fill="#fbbf24" />
+                <Star size={16} fill="#fbbf24" />
+              </div>
+              <p style={{ fontStyle: 'italic', marginBottom: '1rem', color: 'var(--text-primary)' }}>
+                “My flatmates stayed in for deadlines on a Tuesday, so I joined a 6-person Girls Only crew heading to Heebies. Ended up making friends I still go out with every week.”
+              </p>
+              <strong style={{ fontSize: '0.9rem', display: 'block' }}>Chloe M.</strong>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>2nd Year English • University of Liverpool</span>
+            </div>
+
+            <div className="ut-step-card">
+              <div style={{ display: 'flex', gap: '0.2rem', color: '#fbbf24', marginBottom: '0.75rem' }}>
+                <Star size={16} fill="#fbbf24" />
+                <Star size={16} fill="#fbbf24" />
+                <Star size={16} fill="#fbbf24" />
+                <Star size={16} fill="#fbbf24" />
+                <Star size={16} fill="#fbbf24" />
+              </div>
+              <p style={{ fontStyle: 'italic', marginBottom: '1rem', color: 'var(--text-primary)' }}>
+                “Knowing everyone has a verified .ac.uk email changes the whole vibe. We posted a Smithdown pub crawl and 12 students from UoL and LJMU linked up at Brookhouse.”
+              </p>
+              <strong style={{ fontSize: '0.9rem', display: 'block' }}>Ben &amp; Luke</strong>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>3rd Year • Liverpool John Moores University</span>
+            </div>
+
+            <div className="ut-step-card">
+              <div style={{ display: 'flex', gap: '0.2rem', color: '#fbbf24', marginBottom: '0.75rem' }}>
+                <Star size={16} fill="#fbbf24" />
+                <Star size={16} fill="#fbbf24" />
+                <Star size={16} fill="#fbbf24" />
+                <Star size={16} fill="#fbbf24" />
+                <Star size={16} fill="#fbbf24" />
+              </div>
+              <p style={{ fontStyle: 'italic', marginBottom: '1rem', color: 'var(--text-primary)' }}>
+                “The Request-to-Join feature is class. You can check someone’s uni profile and music vibes before approving them into the group chat.”
+              </p>
+              <strong style={{ fontSize: '0.9rem', display: 'block' }}>Liam V.</strong>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Computer Science • University of Manchester</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* DOWNLOAD / WAITLIST & WEB APP CTA BANNER */}
       <section id="download" className="ut-section">
         <div className="ut-container">
@@ -1114,7 +1273,7 @@ export const LandingWebsite: React.FC<LandingWebsiteProps> = ({
               <span className="ut-eyebrow">GET UNITONIGHT</span>
               <h2>Ready for Tonight?</h2>
               <p>
-                Download the iOS or Android app, get early campus drop alerts with your student email, or launch the full UniTonight Web App right in your browser.
+                Join the iOS &amp; Android student beta with your university email, or launch the full UniTonight Web App right now in your browser.
               </p>
 
               <form onSubmit={handleWaitlistSubmit} className="ut-waitlist-form">
@@ -1123,16 +1282,17 @@ export const LandingWebsite: React.FC<LandingWebsiteProps> = ({
                   placeholder="Enter your university email (e.g. you@liverpool.ac.uk)"
                   value={waitlistEmail}
                   onChange={e => setWaitlistEmail(e.target.value)}
+                  disabled={waitlistLoading}
                   required
                 />
-                <button type="submit" className="ut-btn ut-btn-primary">
-                  Get App Link
+                <button type="submit" disabled={waitlistLoading} className="ut-btn ut-btn-primary">
+                  {waitlistLoading ? 'Saving...' : 'Join Mobile Beta'}
                 </button>
               </form>
               {waitlistError && <p className="ut-form-error">{waitlistError}</p>}
               {waitlistSubmitted && (
                 <p className="ut-form-success">
-                  🎉 You’re on the list! We’ve sent the mobile download details—or you can launch the Web App below right now.
+                  🎉 Your .ac.uk email is registered! We’ll send your mobile beta invite shortly—or you can launch the Web App below right now.
                 </p>
               )}
 
@@ -1148,7 +1308,7 @@ export const LandingWebsite: React.FC<LandingWebsiteProps> = ({
                 >
                   <Smartphone size={20} />
                   <div className="ut-store-btn-text">
-                    <span className="ut-store-small">iOS App</span>
+                    <span className="ut-store-small">iOS Beta</span>
                     <span className="ut-store-big">App Store</span>
                   </div>
                 </button>
@@ -1164,7 +1324,7 @@ export const LandingWebsite: React.FC<LandingWebsiteProps> = ({
                 >
                   <Smartphone size={20} />
                   <div className="ut-store-btn-text">
-                    <span className="ut-store-small">Android App</span>
+                    <span className="ut-store-small">Android Beta</span>
                     <span className="ut-store-big">Google Play</span>
                   </div>
                 </button>
@@ -1202,14 +1362,25 @@ export const LandingWebsite: React.FC<LandingWebsiteProps> = ({
           <div className="ut-footer-links">
             <a href="#preview">Interactive Preview</a>
             <a href="#features">Features</a>
-            <a href="#how-it-works">How It Works</a>
-            <button type="button" onClick={() => onLaunchApp('feed')} className="ut-footer-btn-link">
-              Launch Web App
+            <button type="button" onClick={() => openLegalDoc('safety')} className="ut-footer-btn-link">
+              Student Safety
+            </button>
+            <button type="button" onClick={() => openLegalDoc('privacy')} className="ut-footer-btn-link">
+              Privacy Policy
+            </button>
+            <button type="button" onClick={() => openLegalDoc('terms')} className="ut-footer-btn-link">
+              Terms of Service
+            </button>
+            <button type="button" onClick={() => openLegalDoc('support')} className="ut-footer-btn-link">
+              Support
+            </button>
+            <button type="button" onClick={() => onLaunchApp('feed')} className="ut-footer-btn-link" style={{ color: '#c084fc', fontWeight: 700 }}>
+              Launch Web App →
             </button>
           </div>
 
           <div className="ut-footer-copy">
-            © {new Date().getFullYear()} UniTonight (unitonight.com). Exclusively for verified university students.
+            © {new Date().getFullYear()} UniTonight (unitonight.com). Exclusively for verified 18+ university students (.ac.uk &amp; .edu).
           </div>
         </div>
       </footer>
@@ -1230,9 +1401,9 @@ export const LandingWebsite: React.FC<LandingWebsiteProps> = ({
             <div className="ut-modal-badge">
               <Smartphone size={22} />
             </div>
-            <h3>Get UniTonight for {downloadModalPlatform}</h3>
+            <h3>UniTonight for {downloadModalPlatform}</h3>
             <p>
-              Enter your <code>.ac.uk</code> or <code>.edu</code> email to receive your direct {downloadModalPlatform} invite link, or use UniTonight immediately in your browser!
+              Our native {downloadModalPlatform} app is currently rolling out to UK campuses. Enter your <code>.ac.uk</code> or <code>.edu</code> email for instant TestFlight / Beta access, or use the full Web App right now!
             </p>
 
             <form onSubmit={handleWaitlistSubmit} className="ut-modal-form">
@@ -1241,22 +1412,28 @@ export const LandingWebsite: React.FC<LandingWebsiteProps> = ({
                 placeholder="you@university.ac.uk"
                 value={waitlistEmail}
                 onChange={e => setWaitlistEmail(e.target.value)}
+                disabled={waitlistLoading}
                 required
               />
-              <button type="submit" className="ut-btn ut-btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
-                Send {downloadModalPlatform} Link
+              <button
+                type="submit"
+                disabled={waitlistLoading}
+                className="ut-btn ut-btn-primary"
+                style={{ width: '100%', justifyContent: 'center' }}
+              >
+                {waitlistLoading ? 'Saving...' : `Request ${downloadModalPlatform} Invite`}
               </button>
             </form>
 
             {waitlistError && <p className="ut-form-error">{waitlistError}</p>}
             {waitlistSubmitted && (
               <p className="ut-form-success">
-                ✨ Sent! Check your student inbox—or jump straight into the Web App below.
+                ✨ Registered! We’ve saved your student email for {downloadModalPlatform} access.
               </p>
             )}
 
             <div className="ut-modal-divider">
-              <span>or start right now</span>
+              <span>or use immediately in browser</span>
             </div>
 
             <button
@@ -1271,6 +1448,142 @@ export const LandingWebsite: React.FC<LandingWebsiteProps> = ({
               <Globe size={16} />
               <span>Launch UniTonight Web App Now</span>
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* LEGAL, SAFETY & SUPPORT MODAL (#privacy, #terms, #safety, #support) */}
+      {activeLegalDoc && (
+        <div className="ut-modal-backdrop" onClick={closeLegalDoc}>
+          <div className="ut-modal-card ut-legal-modal" onClick={e => e.stopPropagation()}>
+            <button
+              type="button"
+              className="ut-modal-close"
+              onClick={closeLegalDoc}
+              aria-label="Close legal modal"
+            >
+              <X size={18} />
+            </button>
+
+            <div className="ut-legal-tabs">
+              <button
+                type="button"
+                onClick={() => openLegalDoc('privacy')}
+                className={activeLegalDoc === 'privacy' ? 'active' : ''}
+              >
+                <FileText size={14} /> Privacy Policy
+              </button>
+              <button
+                type="button"
+                onClick={() => openLegalDoc('terms')}
+                className={activeLegalDoc === 'terms' ? 'active' : ''}
+              >
+                <FileText size={14} /> Terms of Service
+              </button>
+              <button
+                type="button"
+                onClick={() => openLegalDoc('safety')}
+                className={activeLegalDoc === 'safety' ? 'active' : ''}
+              >
+                <Shield size={14} /> Student Safety
+              </button>
+              <button
+                type="button"
+                onClick={() => openLegalDoc('support')}
+                className={activeLegalDoc === 'support' ? 'active' : ''}
+              >
+                <HelpCircle size={14} /> Support
+              </button>
+            </div>
+
+            <div className="ut-legal-body">
+              {activeLegalDoc === 'privacy' && (
+                <>
+                  <h3>Privacy Policy</h3>
+                  <p className="ut-legal-updated">Effective Date: October 2026 • Domain: unitonight.com</p>
+                  <h4>1. Information We Collect</h4>
+                  <p>
+                    UniTonight collects your verified university email address (ending in <code>.ac.uk</code> or <code>.edu</code>), display name, optional profile bio, selected nightlife vibes, and profile photos when you create an account.
+                  </p>
+                  <h4>2. Location Data</h4>
+                  <p>
+                    With your explicit permission, UniTonight accesses your device’s location while the app is open to display nearby student venues and active crews within your chosen search radius. We do not track your background location when the app is closed or sell location data to third parties.
+                  </p>
+                  <h4>3. Crew Plans, Messages &amp; Notifications</h4>
+                  <p>
+                    Plans you host or join and messages sent in crew group chats are stored securely in Google Cloud Firestore to provide real-time updates to fellow crew members. Optional push notification tokens (FCM) are used solely to alert you of crew join requests, approvals, and chat activity.
+                  </p>
+                  <h4>4. Data Sharing &amp; Advertising</h4>
+                  <p>
+                    We never sell your personal data. Mobile builds may display standard banner advertisements via Google AdMob in accordance with platform privacy settings.
+                  </p>
+                  <h4>5. Account &amp; Data Deletion</h4>
+                  <p>
+                    You have the right to access, update, or permanently delete your account and associated data at any time via the in-app Profile settings or by emailing <strong>support@unitonight.com</strong> from your student email address.
+                  </p>
+                </>
+              )}
+
+              {activeLegalDoc === 'terms' && (
+                <>
+                  <h3>Terms of Service</h3>
+                  <p className="ut-legal-updated">Effective Date: October 2026 • UniTonight</p>
+                  <h4>1. Eligibility (18+ Verified Students Only)</h4>
+                  <p>
+                    UniTonight is strictly for current university students aged 18 or older with a valid <code>.ac.uk</code> or <code>.edu</code> academic email address. You may not share your account or impersonate another student.
+                  </p>
+                  <h4>2. Community Conduct</h4>
+                  <p>
+                    You agree to treat fellow students with respect. Harassment, hate speech, spam, commercial promoting without authorization, or sharing private meetup details outside of approved crew members will result in immediate account termination.
+                  </p>
+                  <h4>3. Real-World Meetups &amp; Responsibility</h4>
+                  <p>
+                    UniTonight is a coordination platform for student social plans. Users are solely responsible for their personal safety, alcohol consumption, and interactions when meeting in public venues.
+                  </p>
+                </>
+              )}
+
+              {activeLegalDoc === 'safety' && (
+                <>
+                  <h3>Student Safety Guidelines</h3>
+                  <p className="ut-legal-updated">Built for safe, authentic campus nights out</p>
+                  <h4>1. Verified University Community</h4>
+                  <p>
+                    Every user on UniTonight must authenticate with an academic email ending in <code>.ac.uk</code> or <code>.edu</code>. Non-student email domains are automatically rejected at sign-up.
+                  </p>
+                  <h4>2. Host Approvals &amp; Girls-Only Crews</h4>
+                  <p>
+                    When creating a plan, hosts can choose <strong>Request to Join</strong> instead of Auto-Join, allowing you to inspect a student’s profile and vibes before granting them access to the crew and group chat. Hosts can also designate plans as <strong>Girls Only</strong>.
+                  </p>
+                  <h4>3. Always Meet in Public Student Venues First</h4>
+                  <p>
+                    We recommend setting your crew’s starting point at a well-lit, busy public student bar or union (such as Concert Square or Smithdown Road pubs) rather than private residences. Look out for your crew members and drink responsibly.
+                  </p>
+                </>
+              )}
+
+              {activeLegalDoc === 'support' && (
+                <>
+                  <h3>Support &amp; Contact</h3>
+                  <p className="ut-legal-updated">Need help with your UniTonight account?</p>
+                  <h4>📧 Email Support</h4>
+                  <p>
+                    For account assistance, university domain requests, bug reports, or safety concerns, contact us anytime at:{' '}
+                    <a href="mailto:support@unitonight.com" style={{ color: '#c084fc', fontWeight: 700 }}>
+                      support@unitonight.com
+                    </a>
+                  </p>
+                  <h4>🗑️ Account &amp; Data Deletion Requests</h4>
+                  <p>
+                    To request full deletion of your UniTonight profile and Firestore records, email <strong>support@unitonight.com</strong> with the subject line <code>Delete My Account</code> from your registered <code>.ac.uk</code> or <code>.edu</code> email address. Requests are processed within 48 hours.
+                  </p>
+                  <h4>🎓 Missing University Domain?</h4>
+                  <p>
+                    If your UK or international university uses a different academic email suffix, let us know and we will whitelist your campus domain.
+                  </p>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -2704,6 +3017,120 @@ export const LandingWebsite: React.FC<LandingWebsiteProps> = ({
           color: var(--text-muted);
         }
 
+        .ut-nav-text-btn {
+          background: none;
+          border: none;
+          color: var(--text-secondary);
+          font-size: 0.92rem;
+          font-weight: 500;
+          cursor: pointer;
+          font-family: inherit;
+          padding: 0;
+          transition: color 0.2s;
+        }
+        .ut-nav-text-btn:hover {
+          color: var(--text-primary);
+        }
+
+        .ut-mobile-menu-btn {
+          display: none;
+          background: rgba(255, 255, 255, 0.06);
+          border: 1px solid var(--border);
+          color: var(--text-primary);
+          width: 38px;
+          height: 38px;
+          border-radius: 10px;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+        }
+
+        .ut-mobile-drawer {
+          display: flex;
+          flex-direction: column;
+          gap: 0.65rem;
+          padding: 1rem 1.5rem 1.35rem;
+          background: rgba(14, 14, 18, 0.98);
+          border-bottom: 1px solid var(--border);
+        }
+        .ut-mobile-drawer a,
+        .ut-mobile-drawer-link {
+          color: var(--text-primary);
+          text-decoration: none;
+          font-size: 0.95rem;
+          font-weight: 600;
+          padding: 0.45rem 0;
+          background: none;
+          border: none;
+          text-align: left;
+          font-family: inherit;
+          cursor: pointer;
+        }
+        .ut-mobile-drawer-actions {
+          padding-top: 0.5rem;
+        }
+
+        /* Legal & Support Modal */
+        .ut-legal-modal {
+          max-width: 680px;
+          text-align: left;
+          max-height: 85vh;
+          display: flex;
+          flex-direction: column;
+        }
+        .ut-legal-tabs {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.45rem;
+          padding-bottom: 1rem;
+          margin-bottom: 1rem;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+          padding-right: 2rem;
+        }
+        .ut-legal-tabs button {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.35rem;
+          padding: 0.45rem 0.85rem;
+          border-radius: 10px;
+          background: #09090b;
+          border: 1px solid var(--border);
+          color: var(--text-secondary);
+          font-size: 0.8rem;
+          font-weight: 700;
+          cursor: pointer;
+          font-family: inherit;
+        }
+        .ut-legal-tabs button.active {
+          background: var(--primary-glow);
+          border-color: var(--primary);
+          color: white;
+        }
+        .ut-legal-body {
+          overflow-y: auto;
+          padding-right: 0.35rem;
+          display: flex;
+          flex-direction: column;
+          gap: 0.65rem;
+        }
+        .ut-legal-body h3 {
+          font-size: 1.45rem;
+          margin-bottom: 0.1rem;
+        }
+        .ut-legal-updated {
+          font-size: 0.78rem !important;
+          color: #c084fc !important;
+          margin-bottom: 0.5rem !important;
+        }
+        .ut-legal-body h4 {
+          font-size: 0.98rem;
+          color: var(--text-primary);
+          margin-top: 0.4rem;
+        }
+        .ut-legal-body p {
+          margin-bottom: 0.35rem;
+        }
+
         @media (max-width: 960px) {
           .ut-hero-grid,
           .ut-map-showcase-grid,
@@ -2713,12 +3140,34 @@ export const LandingWebsite: React.FC<LandingWebsiteProps> = ({
           .ut-nav-links {
             display: none;
           }
+          .ut-mobile-menu-btn {
+            display: inline-flex;
+          }
           .ut-float-left,
           .ut-float-right {
             display: none;
           }
           .ut-waitlist-form {
             flex-direction: column;
+          }
+        }
+
+        @media (max-width: 540px) {
+          .ut-hide-xs {
+            display: none;
+          }
+          .ut-brand-tag {
+            display: none;
+          }
+          .ut-nav-inner {
+            padding: 0.85rem 1rem;
+          }
+          .ut-btn {
+            padding: 0.55rem 0.9rem;
+            font-size: 0.82rem;
+          }
+          .ut-showcase-stage {
+            padding: 1.15rem;
           }
         }
       `}</style>

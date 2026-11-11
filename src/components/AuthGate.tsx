@@ -200,64 +200,66 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthSuccess, onBackToWebsi
           </button>
         </form>
 
-        {/* Quick Test Accounts Panel */}
-        <div className="demo-accounts-panel" style={{
-          marginTop: '1.5rem',
-          padding: '1.25rem',
-          backgroundColor: 'rgba(255, 255, 255, 0.02)',
-          border: '1px solid rgba(255, 255, 255, 0.05)',
-          borderRadius: '16px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '0.75rem',
-          width: '100%'
-        }}>
-          <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--primary)', textAlign: 'center', margin: 0 }}>
-            ⚡ Quick Test Logins
-          </h4>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-            {[
-              { name: 'Rob', email: 'test.rob@university.ac.uk' },
-              { name: 'Sam', email: 'test.sam@university.ac.uk' },
-              { name: 'Chloe', email: 'test.chloe@university.ac.uk' },
-              { name: 'Luke', email: 'test.luke@university.ac.uk' }
-            ].map(testUser => (
-              <button
-                key={testUser.name}
-                type="button"
-                onClick={async () => {
-                  setEmail(testUser.email);
-                  setPassword('Password123');
-                  setError(null);
-                  setLoading(true);
-                  try {
-                    const userCredential = await signInWithEmailAndPassword(auth, testUser.email, 'Password123');
-                    onAuthSuccess(userCredential.user.uid);
-                  } catch (err: any) {
-                    setError(err.message || 'Quick login failed.');
-                  } finally {
-                    setLoading(false);
-                  }
-                }}
-                disabled={loading}
-                style={{
-                  padding: '0.5rem',
-                  backgroundColor: 'rgba(139, 92, 246, 0.08)',
-                  border: '1px solid rgba(139, 92, 246, 0.2)',
-                  borderRadius: '10px',
-                  color: 'white',
-                  fontSize: '0.8rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease'
-                }}
-                className="demo-login-btn"
-              >
-                Sign in as {testUser.name}
-              </button>
-            ))}
+        {/* Quick Test Accounts Panel (Development Only) */}
+        {import.meta.env.DEV && (
+          <div className="demo-accounts-panel" style={{
+            marginTop: '1.5rem',
+            padding: '1.25rem',
+            backgroundColor: 'rgba(255, 255, 255, 0.02)',
+            border: '1px solid rgba(255, 255, 255, 0.05)',
+            borderRadius: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.75rem',
+            width: '100%'
+          }}>
+            <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--primary)', textAlign: 'center', margin: 0 }}>
+              ⚡ Quick Test Logins (Dev)
+            </h4>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+              {[
+                { name: 'Rob', email: 'test.rob@university.ac.uk' },
+                { name: 'Sam', email: 'test.sam@university.ac.uk' },
+                { name: 'Chloe', email: 'test.chloe@university.ac.uk' },
+                { name: 'Luke', email: 'test.luke@university.ac.uk' }
+              ].map(testUser => (
+                <button
+                  key={testUser.name}
+                  type="button"
+                  onClick={async () => {
+                    setEmail(testUser.email);
+                    setPassword('Password123');
+                    setError(null);
+                    setLoading(true);
+                    try {
+                      const userCredential = await signInWithEmailAndPassword(auth, testUser.email, 'Password123');
+                      onAuthSuccess(userCredential.user.uid);
+                    } catch (err: any) {
+                      setError(err.message || 'Quick login failed.');
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                  disabled={loading}
+                  style={{
+                    padding: '0.5rem',
+                    backgroundColor: 'rgba(139, 92, 246, 0.08)',
+                    border: '1px solid rgba(139, 92, 246, 0.2)',
+                    borderRadius: '10px',
+                    color: 'white',
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease'
+                  }}
+                  className="demo-login-btn"
+                >
+                  Sign in as {testUser.name}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         <footer className="auth-footer">
           <p>By signing in, you agree to connect with students on campus safely.</p>

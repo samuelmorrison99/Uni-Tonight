@@ -55,6 +55,8 @@ function App() {
     const handleHashChange = () => {
       if (window.location.hash === '#app') {
         setShowWebsite(false);
+      } else {
+        setShowWebsite(true);
       }
     };
     window.addEventListener('hashchange', handleHashChange);
