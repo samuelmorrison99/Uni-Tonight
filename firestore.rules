@@ -26,6 +26,15 @@ service cloud.firestore {
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['attendeeIds', 'requestIds'])
       );
       allow delete: if isAuthenticated() && resource.data.hostId == request.auth.uid;
+
+      match /messages/{messageId} {
+        allow read, create: if isAuthenticated();
+      }
+    }
+
+    // Direct messages rules: Authenticated users can read and send messages in their DM threads
+    match /dms/{chatId}/messages/{messageId} {
+      allow read, create, update: if isAuthenticated();
     }
   }
 }

@@ -21,6 +21,24 @@ export interface CrewPlan {
   createdAt?: number;
 }
 
+export interface DirectMessage {
+  id: string;
+  senderId: string;
+  senderName: string;
+  recipientId: string;
+  text: string;
+  createdAt: number;
+}
+
+export interface CrewChatMessage {
+  id: string;
+  crewId: string;
+  senderId: string;
+  senderName: string;
+  text: string;
+  createdAt: number;
+}
+
 export interface UserProfile {
   id: string;
   name: string;
@@ -28,6 +46,8 @@ export interface UserProfile {
   vibes: string[];
   photos: string[];
   deletedAt?: number;
+  directMessages?: DirectMessage[];
+  crewMessages?: CrewChatMessage[];
 }
 
 export interface Venue {

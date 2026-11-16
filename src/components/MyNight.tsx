@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import type { CrewPlan, UserProfile } from '../types';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import type { CrewPlan, UserProfile, DirectMessage, CrewChatMessage } from '../types';
 import { Send, MessageCircleCode, Users, MessageSquareCode } from 'lucide-react';
-import { db } from '../firebase';
-import { collection, onSnapshot, addDoc, query, orderBy, serverTimestamp } from 'firebase/firestore';
+import { db, auth } from '../firebase';
+import { collection, onSnapshot, doc, setDoc, arrayUnion, query, orderBy, serverTimestamp } from 'firebase/firestore';
 
 interface MyNightProps {
   plans: CrewPlan[];
@@ -17,11 +17,13 @@ interface ChatMessage {
   text: string;
   time: string;
   isMe: boolean;
+  createdAt: number;
 }
 
 export const MyNight: React.FC<MyNightProps> = ({ plans, toggleRSVP, profiles, activeProfile }) => {
   const [activeTab, setActiveTab] = useState<'crews' | 'dms'>('crews');
   const [blockedUserIds, setBlockedUserIds] = useState<string[]>([]);
+  const currentUserId = auth.currentUser?.uid || activeProfile.id;
   
   // Expiration check: hide joined crews if their scheduled time is older than 6 hours
   const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
@@ -29,7 +31,7 @@ export const MyNight: React.FC<MyNightProps> = ({ plans, toggleRSVP, profiles, a
     p.joined && (!p.eventTimestamp || (Date.now() - p.eventTimestamp < SIX_HOURS_MS))
   );
   const otherUsers = profiles.filter(
-    u => u.id !== activeProfile.id && !blockedUserIds.includes(u.id) && !u.deletedAt && u.name !== 'Deleted User'
+    u => u.id !== currentUserId && !blockedUserIds.includes(u.id) && !u.deletedAt && u.name !== 'Deleted User'
   );
 
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(
@@ -39,74 +41,347 @@ export const MyNight: React.FC<MyNightProps> = ({ plans, toggleRSVP, profiles, a
     otherUsers.length > 0 ? otherUsers[0].id : null
   );
 
+  // Ensure a plan/user is auto-selected once Firestore finishes loading
+  useEffect(() => {
+    if ((!selectedPlanId || !joinedPlans.some(p => p.id === selectedPlanId)) && joinedPlans.length > 0) {
+      setSelectedPlanId(joinedPlans[0].id);
+    }
+  }, [joinedPlans, selectedPlanId]);
+
+  useEffect(() => {
+    if ((!selectedUserId || !otherUsers.some(u => u.id === selectedUserId)) && otherUsers.length > 0) {
+      setSelectedUserId(otherUsers[0].id);
+    }
+  }, [otherUsers, selectedUserId]);
+
   const [messageText, setMessageText] = useState('');
   
-  // Real-time group chats
+  // Real-time group chats from subcollection (when permitted by rules)
   const [realtimeGroupChats, setRealtimeGroupChats] = useState<Record<string, ChatMessage[]>>({});
+  // Real-time direct chats from subcollection (when permitted by rules)
+  const [realtimeDmChats, setRealtimeDmChats] = useState<Record<string, ChatMessage[]>>({});
+  // Local/optimistic state backed by localStorage for instant persistence across app restarts
+  const [optimisticDMs, setOptimisticDMs] = useState<DirectMessage[]>(() => {
+    try {
+      const saved = localStorage.getItem('unitonight_cached_dms_v1');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [optimisticCrewMsgs, setOptimisticCrewMsgs] = useState<CrewChatMessage[]>(() => {
+    try {
+      const saved = localStorage.getItem('unitonight_cached_crew_msgs_v1');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Persist local cache whenever optimistic messages update
+  useEffect(() => {
+    try {
+      localStorage.setItem('unitonight_cached_dms_v1', JSON.stringify(optimisticDMs));
+    } catch {
+      // Ignore storage quota errors
+    }
+  }, [optimisticDMs]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('unitonight_cached_crew_msgs_v1', JSON.stringify(optimisticCrewMsgs));
+    } catch {
+      // Ignore storage quota errors
+    }
+  }, [optimisticCrewMsgs]);
+
+  // Re-sync any cached local DMs that haven't landed in Firestore yet (e.g. if app was closed mid-send)
+  useEffect(() => {
+    if (!currentUserId || profiles.length === 0) return;
+    const myProfile = profiles.find(p => p.id === currentUserId);
+    const remoteIds = new Set((myProfile?.directMessages || []).map(m => m.id));
+    const unsynced = optimisticDMs.filter(m => m.senderId === currentUserId && !remoteIds.has(m.id));
+    if (unsynced.length > 0) {
+      setDoc(
+        doc(db, 'profiles', currentUserId),
+        {
+          id: currentUserId,
+          directMessages: arrayUnion(...unsynced),
+        },
+        { merge: true }
+      ).catch(() => {});
+    }
+  }, [currentUserId, profiles, optimisticDMs]);
+
+  const messagesBodyRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (activeTab === 'crews' && selectedPlanId) {
       const messagesRef = collection(db, 'crews', selectedPlanId, 'messages');
       const q = query(messagesRef, orderBy('createdAt', 'asc'));
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const msgs: ChatMessage[] = snapshot.docs.map(doc => {
-          const data = doc.data();
-          const timestamp = data.createdAt?.toDate() || new Date();
-          return {
-            id: doc.id,
-            sender: data.senderName,
-            text: data.text,
-            time: timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            isMe: data.senderId === activeProfile.id
-          };
-        });
-        
-        setRealtimeGroupChats(prev => ({
-          ...prev,
-          [selectedPlanId]: msgs
-        }));
-      });
+      const unsubscribe = onSnapshot(
+        q,
+        (snapshot) => {
+          const msgs: ChatMessage[] = snapshot.docs.map(docSnap => {
+            const data = docSnap.data();
+            const createdAtMs =
+              typeof data.createdAtMs === 'number'
+                ? data.createdAtMs
+                : data.createdAt?.toMillis?.() || Date.now();
+            const timestamp = new Date(createdAtMs);
+            return {
+              id: docSnap.id,
+              sender: data.senderName || 'Student',
+              text: data.text || '',
+              time: timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              isMe: data.senderId === currentUserId,
+              createdAt: createdAtMs,
+            };
+          });
+
+          setRealtimeGroupChats(prev => ({
+            ...prev,
+            [selectedPlanId]: msgs,
+          }));
+        },
+        () => {
+          // Subcollection listener fallback handled via profile-synced crewMessages
+        }
+      );
       return () => unsubscribe();
     }
-  }, [activeTab, selectedPlanId, activeProfile.id]);
+  }, [activeTab, selectedPlanId, currentUserId]);
 
-  // In-memory chat storage for direct messages
-  const [dmChats, setDmChats] = useState<Record<string, ChatMessage[]>>({});
+  useEffect(() => {
+    if (activeTab === 'dms' && selectedUserId && currentUserId) {
+      const chatId = [currentUserId, selectedUserId].sort().join('_');
+      const messagesRef = collection(db, 'dms', chatId, 'messages');
+      const q = query(messagesRef, orderBy('createdAt', 'asc'));
+      const unsubscribe = onSnapshot(
+        q,
+        (snapshot) => {
+          const msgs: ChatMessage[] = snapshot.docs.map(docSnap => {
+            const data = docSnap.data();
+            const createdAtMs =
+              typeof data.createdAt === 'number'
+                ? data.createdAt
+                : data.createdAt?.toMillis?.() || Date.now();
+            const timestamp = new Date(createdAtMs);
+            return {
+              id: docSnap.id,
+              sender: data.senderName || 'Student',
+              text: data.text || '',
+              time: timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              isMe: data.senderId === currentUserId,
+              createdAt: createdAtMs,
+            };
+          });
 
-  const activeChat = activeTab === 'crews' 
-    ? (selectedPlanId ? (realtimeGroupChats[selectedPlanId] || []) : [])
-    : (selectedUserId ? (dmChats[selectedUserId] || []) : []);
+          setRealtimeDmChats(prev => ({
+            ...prev,
+            [chatId]: msgs,
+          }));
+        },
+        () => {
+          // Subcollection listener fallback handled via profile-synced directMessages
+        }
+      );
+      return () => unsubscribe();
+    }
+  }, [activeTab, selectedUserId, currentUserId]);
+
+  // Merge Crew messages from profiles + subcollection + optimistic state
+  const activeCrewChat = useMemo<ChatMessage[]>(() => {
+    if (!selectedPlanId) return [];
+    const byId = new Map<string, ChatMessage>();
+
+    for (const msg of realtimeGroupChats[selectedPlanId] || []) {
+      byId.set(msg.id, msg);
+    }
+
+    for (const profile of profiles) {
+      for (const m of profile.crewMessages || []) {
+        if (m.crewId === selectedPlanId) {
+          const createdAtMs = typeof m.createdAt === 'number' ? m.createdAt : Date.now();
+          byId.set(m.id, {
+            id: m.id,
+            sender: m.senderName || profile.name || 'Student',
+            text: m.text,
+            time: new Date(createdAtMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            isMe: m.senderId === currentUserId,
+            createdAt: createdAtMs,
+          });
+        }
+      }
+    }
+
+    for (const m of optimisticCrewMsgs) {
+      if (m.crewId === selectedPlanId && !byId.has(m.id)) {
+        byId.set(m.id, {
+          id: m.id,
+          sender: m.senderName,
+          text: m.text,
+          time: new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          isMe: m.senderId === currentUserId,
+          createdAt: m.createdAt,
+        });
+      }
+    }
+
+    return Array.from(byId.values()).sort((a, b) => a.createdAt - b.createdAt);
+  }, [selectedPlanId, realtimeGroupChats, profiles, optimisticCrewMsgs, currentUserId]);
+
+  // Merge Direct messages between currentUserId and selectedUserId from profiles + subcollection + optimistic state
+  const activeDmChat = useMemo<ChatMessage[]>(() => {
+    if (!selectedUserId || !currentUserId) return [];
+    const chatId = [currentUserId, selectedUserId].sort().join('_');
+    const byId = new Map<string, ChatMessage>();
+
+    for (const msg of realtimeDmChats[chatId] || []) {
+      byId.set(msg.id, msg);
+    }
+
+    for (const profile of profiles) {
+      for (const m of profile.directMessages || []) {
+        const isBetweenPair =
+          (m.senderId === currentUserId && m.recipientId === selectedUserId) ||
+          (m.senderId === selectedUserId && m.recipientId === currentUserId);
+        if (isBetweenPair) {
+          const createdAtMs = typeof m.createdAt === 'number' ? m.createdAt : Date.now();
+          byId.set(m.id, {
+            id: m.id,
+            sender: m.senderName || profile.name || 'Student',
+            text: m.text,
+            time: new Date(createdAtMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            isMe: m.senderId === currentUserId,
+            createdAt: createdAtMs,
+          });
+        }
+      }
+    }
+
+    for (const m of optimisticDMs) {
+      const isBetweenPair =
+        (m.senderId === currentUserId && m.recipientId === selectedUserId) ||
+        (m.senderId === selectedUserId && m.recipientId === currentUserId);
+      if (isBetweenPair && !byId.has(m.id)) {
+        byId.set(m.id, {
+          id: m.id,
+          sender: m.senderName,
+          text: m.text,
+          time: new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          isMe: m.senderId === currentUserId,
+          createdAt: m.createdAt,
+        });
+      }
+    }
+
+    return Array.from(byId.values()).sort((a, b) => a.createdAt - b.createdAt);
+  }, [selectedUserId, currentUserId, realtimeDmChats, profiles, optimisticDMs]);
+
+  const activeChat = activeTab === 'crews' ? activeCrewChat : activeDmChat;
+
+  // Auto-scroll to bottom when active conversation messages update
+  useEffect(() => {
+    if (messagesBodyRef.current) {
+      messagesBodyRef.current.scrollTop = messagesBodyRef.current.scrollHeight;
+    }
+  }, [activeChat.length, activeTab, selectedPlanId, selectedUserId]);
 
   const selectedPlan = plans.find(p => p.id === selectedPlanId);
   const selectedUser = profiles.find(u => u.id === selectedUserId);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!messageText.trim()) return;
+    const trimmedText = messageText.trim();
+    if (!trimmedText || !currentUserId) return;
+
+    const senderName = activeProfile.name || auth.currentUser?.displayName || 'Student';
+    setMessageText('');
 
     if (activeTab === 'crews' && selectedPlanId) {
-      const messagesRef = collection(db, 'crews', selectedPlanId, 'messages');
-      await addDoc(messagesRef, {
-        senderId: activeProfile.id,
-        senderName: activeProfile.name,
-        text: messageText,
-        createdAt: serverTimestamp()
-      });
-    } else if (activeTab === 'dms' && selectedUserId) {
-      const newMessage: ChatMessage = {
-        id: Math.random().toString(),
-        sender: activeProfile.name,
-        text: messageText,
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        isMe: true,
+      const msgId = `crew_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+      const createdAtMs = Date.now();
+      const newCrewMsg: CrewChatMessage = {
+        id: msgId,
+        crewId: selectedPlanId,
+        senderId: currentUserId,
+        senderName,
+        text: trimmedText,
+        createdAt: createdAtMs,
       };
-      setDmChats(prev => ({
-        ...prev,
-        [selectedUserId]: [...(prev[selectedUserId] || []), newMessage],
-      }));
-    }
 
-    setMessageText('');
+      setOptimisticCrewMsgs(prev => {
+        const next = [...prev, newCrewMsg];
+        try {
+          localStorage.setItem('unitonight_cached_crew_msgs_v1', JSON.stringify(next));
+        } catch {
+          // Ignore storage quota errors
+        }
+        return next;
+      });
+
+      try {
+        await setDoc(
+          doc(db, 'profiles', currentUserId),
+          {
+            id: currentUserId,
+            crewMessages: arrayUnion(newCrewMsg),
+          },
+          { merge: true }
+        );
+      } catch (err) {
+        console.error('Failed to persist crew message to profile:', err);
+      }
+
+      setDoc(doc(db, 'crews', selectedPlanId, 'messages', msgId), {
+        senderId: currentUserId,
+        senderName,
+        text: trimmedText,
+        createdAtMs,
+        createdAt: serverTimestamp(),
+      }).catch(() => {});
+    } else if (activeTab === 'dms' && selectedUserId) {
+      const msgId = `dm_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+      const createdAtMs = Date.now();
+      const newDm: DirectMessage = {
+        id: msgId,
+        senderId: currentUserId,
+        senderName,
+        recipientId: selectedUserId,
+        text: trimmedText,
+        createdAt: createdAtMs,
+      };
+
+      setOptimisticDMs(prev => {
+        const next = [...prev, newDm];
+        try {
+          localStorage.setItem('unitonight_cached_dms_v1', JSON.stringify(next));
+        } catch {
+          // Ignore storage quota errors
+        }
+        return next;
+      });
+
+      try {
+        await setDoc(
+          doc(db, 'profiles', currentUserId),
+          {
+            id: currentUserId,
+            directMessages: arrayUnion(newDm),
+          },
+          { merge: true }
+        );
+      } catch (err) {
+        console.error('Failed to persist direct message to Firestore:', err);
+      }
+
+      const chatId = [currentUserId, selectedUserId].sort().join('_');
+      setDoc(doc(db, 'dms', chatId, 'messages', msgId), {
+        ...newDm,
+        timestamp: serverTimestamp(),
+      }).catch(() => {});
+    }
   };
 
   return (
@@ -176,7 +451,7 @@ export const MyNight: React.FC<MyNightProps> = ({ plans, toggleRSVP, profiles, a
                       className={`chat-entry-item user-item ${selectedUserId === user.id ? 'active' : ''}`}
                     >
                       <div className="user-avatar">
-                        {user.photos[0] ? (
+                        {user.photos?.[0] ? (
                           <img src={user.photos[0]} alt={user.name} className="avatar-img" />
                         ) : (
                           user.name.charAt(0)
@@ -225,7 +500,7 @@ export const MyNight: React.FC<MyNightProps> = ({ plans, toggleRSVP, profiles, a
               </div>
 
               {/* Messages Grid */}
-              <div className="chat-messages-body">
+              <div className="chat-messages-body" ref={messagesBodyRef}>
                 {activeChat.length === 0 ? (
                   <div className="empty-chat-state">
                     <MessageCircleCode size={36} />
@@ -264,7 +539,7 @@ export const MyNight: React.FC<MyNightProps> = ({ plans, toggleRSVP, profiles, a
               <div className="chat-window-header">
                 <div className="user-header-info">
                   <div className="header-avatar">
-                    {selectedUser.photos[0] ? (
+                    {selectedUser.photos?.[0] ? (
                       <img src={selectedUser.photos[0]} alt={selectedUser.name} className="avatar-img" />
                     ) : (
                       selectedUser.name.charAt(0)
@@ -304,7 +579,7 @@ export const MyNight: React.FC<MyNightProps> = ({ plans, toggleRSVP, profiles, a
               </div>
 
               {/* DM Messages Grid */}
-              <div className="chat-messages-body">
+              <div className="chat-messages-body" ref={messagesBodyRef}>
                 {activeChat.length === 0 ? (
                   <div className="empty-chat-state">
                     <MessageCircleCode size={36} />

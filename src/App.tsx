@@ -115,6 +115,7 @@ function App() {
 
   const [notifications, setNotifications] = useState<ToastNotification[]>([]);
   const prevPlansRef = useRef<CrewPlan[]>([]);
+  const knownDmIdsRef = useRef<Set<string> | null>(null);
   const [activeProfileId, setActiveProfileId] = useState<string>('');
 
   const triggerNotification = (message: string, type: 'success' | 'info' = 'info') => {
@@ -132,6 +133,7 @@ function App() {
     }, 2500);
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       clearTimeout(safetyTimer);
+      knownDmIdsRef.current = null;
       setCurrentUser(user);
       if (user) {
         setActiveProfileId(user.uid);
@@ -173,11 +175,36 @@ function App() {
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, "profiles"), (snapshot) => {
       const fetchedProfiles = snapshot.docs
-        .map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        } as UserProfile & { deletedAt?: number }))
+        .map(docSnap => {
+          const data = docSnap.data();
+          return {
+            id: docSnap.id,
+            name: data.name || 'Student',
+            bio: data.bio || '',
+            vibes: data.vibes || [],
+            photos: data.photos || [],
+            ...data
+          } as UserProfile & { deletedAt?: number };
+        })
         .filter(p => !p.deletedAt && p.name !== 'Deleted User' && !['u1', 'u2', 'u3'].includes(p.id));
+
+      const currentUid = auth.currentUser?.uid;
+      if (currentUid) {
+        const incomingMessages = fetchedProfiles.flatMap(p =>
+          (p.directMessages || []).filter(m => m.recipientId === currentUid && m.senderId !== currentUid)
+        );
+        if (knownDmIdsRef.current === null) {
+          knownDmIdsRef.current = new Set(incomingMessages.map(m => m.id));
+        } else {
+          for (const msg of incomingMessages) {
+            if (!knownDmIdsRef.current.has(msg.id)) {
+              knownDmIdsRef.current.add(msg.id);
+              triggerNotification(`💬 ${msg.senderName}: ${msg.text}`, 'info');
+            }
+          }
+        }
+      }
+
       setProfiles(fetchedProfiles);
     }, (error) => {
       console.warn("Firestore profiles listener warning:", error);
