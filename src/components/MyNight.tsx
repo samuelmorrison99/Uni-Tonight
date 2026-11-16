@@ -28,7 +28,9 @@ export const MyNight: React.FC<MyNightProps> = ({ plans, toggleRSVP, profiles, a
   const joinedPlans = plans.filter(p => 
     p.joined && (!p.eventTimestamp || (Date.now() - p.eventTimestamp < SIX_HOURS_MS))
   );
-  const otherUsers = profiles.filter(u => u.id !== activeProfile.id && !blockedUserIds.includes(u.id));
+  const otherUsers = profiles.filter(
+    u => u.id !== activeProfile.id && !blockedUserIds.includes(u.id) && !u.deletedAt && u.name !== 'Deleted User'
+  );
 
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(
     joinedPlans.length > 0 ? joinedPlans[0].id : null
@@ -69,16 +71,7 @@ export const MyNight: React.FC<MyNightProps> = ({ plans, toggleRSVP, profiles, a
   }, [activeTab, selectedPlanId, activeProfile.id]);
 
   // In-memory chat storage for direct messages
-  const [dmChats, setDmChats] = useState<Record<string, ChatMessage[]>>({
-    'u2': [
-      { id: 'd1', sender: 'Chloe Jones', text: 'Hey, are you joining my Heebles crew tonight?', time: '18:10', isMe: false },
-      { id: 'd2', sender: activeProfile.name, text: 'Thinking about it! What time are you heading down?', time: '18:15', isMe: true },
-      { id: 'd3', sender: 'Chloe Jones', text: 'Around 10 PM. Let me know if you RSVP!', time: '18:16', isMe: false },
-    ],
-    'u3': [
-      { id: 'd4', sender: 'Luke Higgins', text: 'Down for the Smithdown pub crawl tonight mate?', time: '19:00', isMe: false },
-    ]
-  });
+  const [dmChats, setDmChats] = useState<Record<string, ChatMessage[]>>({});
 
   const activeChat = activeTab === 'crews' 
     ? (selectedPlanId ? (realtimeGroupChats[selectedPlanId] || []) : [])

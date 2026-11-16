@@ -27,6 +27,7 @@ export interface UserProfile {
   bio: string;
   vibes: string[];
   photos: string[];
+  deletedAt?: number;
 }
 
 export interface Venue {

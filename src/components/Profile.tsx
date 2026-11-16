@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { UserProfile } from '../types';
 import { User, ShieldCheck, Save, Sparkles, Plus, X, LogIn, Trash2 } from 'lucide-react';
-import { doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { deleteUser } from 'firebase/auth';
 import { db, auth } from '../firebase';
 
@@ -309,14 +309,18 @@ export const Profile: React.FC<ProfileProps> = ({
                           if (user) {
                             const isDemoUser = user.email?.startsWith('test.');
                             if (!isDemoUser) {
-                              await setDoc(doc(db, "profiles", user.uid), {
-                                id: user.uid,
-                                name: "Deleted User",
-                                bio: "",
-                                vibes: [],
-                                photos: [],
-                                deletedAt: Date.now()
-                              });
+                              try {
+                                await deleteDoc(doc(db, "profiles", user.uid));
+                              } catch {
+                                await setDoc(doc(db, "profiles", user.uid), {
+                                  id: user.uid,
+                                  name: "Deleted User",
+                                  bio: "",
+                                  vibes: [],
+                                  photos: [],
+                                  deletedAt: Date.now()
+                                });
+                              }
                               await deleteUser(user);
                             } else {
                               await auth.signOut();

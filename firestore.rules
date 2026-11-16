@@ -11,11 +11,10 @@ service cloud.firestore {
       return request.auth.uid == userId;
     }
 
-    // Profiles rules: Users can read all profiles, but write only their own
+    // Profiles rules: Users can read all profiles, but write/delete only their own
     match /profiles/{userId} {
       allow read: if isAuthenticated();
-      allow create, update: if isAuthenticated() && isOwner(userId);
-      allow delete: if false;
+      allow create, update, delete: if isAuthenticated() && isOwner(userId);
     }
 
     // Crews rules: Authenticated users can view crews. Hosts can manage, others can only toggle RSVP arrays
