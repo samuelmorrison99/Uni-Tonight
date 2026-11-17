@@ -171,24 +171,25 @@ function App() {
     requestPushPermissions();
   }, [currentUser]);
 
-  // Sync Profiles collection in real-time
+  // Sync Profiles collection in real-time (re-subscribes whenever currentUser logs in)
   useEffect(() => {
+    if (!currentUser) return;
     const unsubscribe = onSnapshot(collection(db, "profiles"), (snapshot) => {
       const fetchedProfiles = snapshot.docs
         .map(docSnap => {
           const data = docSnap.data();
           return {
+            ...data,
             id: docSnap.id,
             name: data.name || 'Student',
             bio: data.bio || '',
             vibes: data.vibes || [],
             photos: data.photos || [],
-            ...data
           } as UserProfile & { deletedAt?: number };
         })
         .filter(p => !p.deletedAt && p.name !== 'Deleted User' && !['u1', 'u2', 'u3'].includes(p.id));
 
-      const currentUid = auth.currentUser?.uid;
+      const currentUid = currentUser.uid;
       if (currentUid) {
         const incomingMessages = fetchedProfiles.flatMap(p =>
           (p.directMessages || []).filter(m => m.recipientId === currentUid && m.senderId !== currentUid)
@@ -199,7 +200,10 @@ function App() {
           for (const msg of incomingMessages) {
             if (!knownDmIdsRef.current.has(msg.id)) {
               knownDmIdsRef.current.add(msg.id);
-              triggerNotification(`💬 ${msg.senderName}: ${msg.text}`, 'info');
+              const senderProfile = fetchedProfiles.find(p => p.id === msg.senderId);
+              const displaySender =
+                (msg.senderName && msg.senderName !== 'Student' ? msg.senderName : senderProfile?.name) || 'Student';
+              triggerNotification(`💬 ${displaySender}: ${msg.text}`, 'info');
             }
           }
         }
@@ -211,7 +215,7 @@ function App() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [currentUser]);
 
   const activeProfile: UserProfile = profiles.find(p => p.id === (currentUser?.uid || activeProfileId)) || {
     id: currentUser?.uid || activeProfileId || '',

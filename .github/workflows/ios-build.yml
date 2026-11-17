@@ -64,7 +64,7 @@ jobs:
             -configuration Release \
             -destination "generic/platform=iOS" \
             -archivePath build/App.xcarchive \
-            MARKETING_VERSION=1.1 \
+            MARKETING_VERSION=1.2 \
             CURRENT_PROJECT_VERSION=${{ github.run_number }} \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \

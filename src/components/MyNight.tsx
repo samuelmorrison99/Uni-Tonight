@@ -20,10 +20,39 @@ interface ChatMessage {
   createdAt: number;
 }
 
-export const MyNight: React.FC<MyNightProps> = ({ plans, toggleRSVP, profiles, activeProfile }) => {
+export const MyNight: React.FC<MyNightProps> = ({ plans, toggleRSVP, profiles: parentProfiles, activeProfile }) => {
   const [activeTab, setActiveTab] = useState<'crews' | 'dms'>('crews');
   const [blockedUserIds, setBlockedUserIds] = useState<string[]>([]);
+  const [liveProfiles, setLiveProfiles] = useState<UserProfile[] | null>(null);
   const currentUserId = auth.currentUser?.uid || activeProfile.id;
+
+  // Dedicated real-time profiles listener inside MyNight so chat messages always stay in sync
+  useEffect(() => {
+    if (!currentUserId) return;
+    const unsubscribe = onSnapshot(
+      collection(db, 'profiles'),
+      (snapshot) => {
+        const fetched = snapshot.docs
+          .map(docSnap => {
+            const data = docSnap.data();
+            return {
+              ...data,
+              id: docSnap.id,
+              name: data.name || 'Student',
+              bio: data.bio || '',
+              vibes: data.vibes || [],
+              photos: data.photos || [],
+            } as UserProfile & { deletedAt?: number };
+          })
+          .filter(p => !p.deletedAt && p.name !== 'Deleted User' && !['u1', 'u2', 'u3'].includes(p.id));
+        setLiveProfiles(fetched);
+      },
+      () => {}
+    );
+    return () => unsubscribe();
+  }, [currentUserId]);
+
+  const profiles = liveProfiles && liveProfiles.length > 0 ? liveProfiles : parentProfiles;
   
   // Expiration check: hide joined crews if their scheduled time is older than 6 hours
   const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
@@ -203,9 +232,11 @@ export const MyNight: React.FC<MyNightProps> = ({ plans, toggleRSVP, profiles, a
       for (const m of profile.crewMessages || []) {
         if (m.crewId === selectedPlanId) {
           const createdAtMs = typeof m.createdAt === 'number' ? m.createdAt : Date.now();
+          const resolvedSender =
+            (m.senderName && m.senderName !== 'Student' ? m.senderName : profile.name) || 'Student';
           byId.set(m.id, {
             id: m.id,
-            sender: m.senderName || profile.name || 'Student',
+            sender: resolvedSender,
             text: m.text,
             time: new Date(createdAtMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             isMe: m.senderId === currentUserId,
@@ -248,9 +279,11 @@ export const MyNight: React.FC<MyNightProps> = ({ plans, toggleRSVP, profiles, a
           (m.senderId === selectedUserId && m.recipientId === currentUserId);
         if (isBetweenPair) {
           const createdAtMs = typeof m.createdAt === 'number' ? m.createdAt : Date.now();
+          const resolvedSender =
+            (m.senderName && m.senderName !== 'Student' ? m.senderName : profile.name) || 'Student';
           byId.set(m.id, {
             id: m.id,
-            sender: m.senderName || profile.name || 'Student',
+            sender: resolvedSender,
             text: m.text,
             time: new Date(createdAtMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             isMe: m.senderId === currentUserId,
@@ -296,7 +329,11 @@ export const MyNight: React.FC<MyNightProps> = ({ plans, toggleRSVP, profiles, a
     const trimmedText = messageText.trim();
     if (!trimmedText || !currentUserId) return;
 
-    const senderName = activeProfile.name || auth.currentUser?.displayName || 'Student';
+    const myLiveProfile = profiles.find(p => p.id === currentUserId);
+    const senderName =
+      (myLiveProfile?.name && myLiveProfile.name !== 'Student' ? myLiveProfile.name : activeProfile.name) ||
+      auth.currentUser?.displayName ||
+      'Student';
     setMessageText('');
 
     if (activeTab === 'crews' && selectedPlanId) {
