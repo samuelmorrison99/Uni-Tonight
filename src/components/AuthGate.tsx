@@ -28,7 +28,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthSuccess, onBackToWebsi
     try {
       if (isSignUp) {
         if (!displayName.trim()) {
-          throw new Error('Please enter a display name.');
+          throw new Error('Please enter a username.');
         }
 
         const emailLower = email.toLowerCase().trim();
@@ -140,7 +140,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthSuccess, onBackToWebsi
 
           {isSignUp && (
             <div className="auth-input-group">
-              <label htmlFor="authName">Display Name</label>
+              <label htmlFor="authName">Username</label>
               <div className="input-wrapper">
                 <input 
                   id="authName"
