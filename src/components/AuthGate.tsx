@@ -145,7 +145,6 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthSuccess, onBackToWebsi
                 <input 
                   id="authName"
                   type="text" 
-                  placeholder="e.g. Rob Marriott"
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
                   required 
